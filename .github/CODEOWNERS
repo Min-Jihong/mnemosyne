@@ -1,0 +1,30 @@
+# CODEOWNERS - Define code ownership for pull request reviews
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+*                       @yourusername
+
+# Core capture system
+/mnemosyne/capture/     @yourusername
+
+# LLM providers
+/mnemosyne/llm/         @yourusername
+
+# Web interface
+/mnemosyne/web/         @yourusername
+
+# Tests
+/tests/                 @yourusername
+
+# Documentation
+/docs/                  @yourusername
+*.md                    @yourusername
+
+# CI/CD and infrastructure
+/.github/               @yourusername
+/Dockerfile             @yourusername
+/docker-compose.yml     @yourusername
+
+# Configuration
+/pyproject.toml         @yourusername
+/mkdocs.yml             @yourusername
