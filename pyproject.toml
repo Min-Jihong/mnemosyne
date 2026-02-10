@@ -51,11 +51,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tui = [
+    "textual>=0.47",      # Modern TUI framework
+]
 web = [
     "fastapi>=0.109",
     "uvicorn[standard]>=0.27",
     "jinja2>=3.1",
     "python-multipart>=0.0.6",
+    "websockets>=12.0",   # WebSocket support
 ]
 macos = [
     "pyobjc-core>=10.0",         # macOS native APIs
@@ -83,7 +87,7 @@ docs = [
     "mkdocstrings[python]>=0.24",
 ]
 all = [
-    "mnemosyne[web,macos,ml,dev,docs]",
+    "mnemosyne[tui,web,macos,ml,dev,docs]",
 ]
 
 [project.scripts]
@@ -112,3 +116,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "e2e: End-to-end tests requiring browser (Playwright)",
+    "live: Tests requiring real LLM API calls (MNEMOSYNE_LIVE_TEST=1)",
+    "slow: Tests taking >10 seconds",
+    "integration: Integration tests",
+]
