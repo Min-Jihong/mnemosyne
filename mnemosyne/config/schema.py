@@ -112,3 +112,51 @@ class CuriosityConfig(BaseModel):
     anomaly_threshold: float = 0.7  # How different must an action be to trigger
     question_cooldown_seconds: int = 300  # Min time between user questions
     max_pending_questions: int = 10  # Max questions to queue
+
+
+def export_json_schema() -> dict:
+    """Export all configuration schemas as JSON Schema for IDE support."""
+    from typing import Any
+
+    schemas: dict[str, Any] = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Mnemosyne Configuration Schema",
+        "type": "object",
+        "definitions": {},
+    }
+
+    models = [
+        ("LLMConfig", LLMConfig),
+        ("EmbeddingConfig", EmbeddingConfig),
+        ("CaptureConfig", CaptureConfig),
+        ("MemoryConfig", MemoryConfig),
+        ("CuriosityConfig", CuriosityConfig),
+    ]
+
+    for name, model in models:
+        schemas["definitions"][name] = model.model_json_schema()
+
+    schemas["properties"] = {
+        "llm": {"$ref": "#/definitions/LLMConfig"},
+        "embedding": {"$ref": "#/definitions/EmbeddingConfig"},
+        "capture": {"$ref": "#/definitions/CaptureConfig"},
+        "memory": {"$ref": "#/definitions/MemoryConfig"},
+        "curiosity": {"$ref": "#/definitions/CuriosityConfig"},
+    }
+
+    return schemas
+
+
+def write_json_schema(output_path: Path | None = None) -> Path:
+    """Write JSON Schema to file for IDE support."""
+    import json
+
+    if output_path is None:
+        output_path = Path(__file__).parent.parent.parent / "mnemosyne-config-schema.json"
+
+    schema = export_json_schema()
+
+    with open(output_path, "w") as f:
+        json.dump(schema, f, indent=2)
+
+    return output_path
