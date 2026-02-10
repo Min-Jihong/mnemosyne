@@ -1,0 +1,69 @@
+# =============================================================================
+# Mnemosyne - Docker Compose Configuration
+# =============================================================================
+# 
+# Usage:
+#   Development:  docker compose up
+#   Production:   docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Mnemosyne Web Application
+  # ---------------------------------------------------------------------------
+  mnemosyne:
+    build:
+      context: .
+      target: development
+    container_name: mnemosyne-web
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for development
+      - .:/home/mnemosyne/app
+      # Persist data directory
+      - mnemosyne-data:/home/mnemosyne/.mnemosyne
+    environment:
+      - MNEMOSYNE_ENV=development
+      - MNEMOSYNE_LOG_LEVEL=DEBUG
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # ChromaDB Vector Store (Optional - for persistent vector storage)
+  # ---------------------------------------------------------------------------
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: mnemosyne-chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chromadb-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  mnemosyne-data:
+    driver: local
+  chromadb-data:
+    driver: local
+
+# =============================================================================
+# Networks (optional, for service isolation)
+# =============================================================================
+networks:
+  default:
+    name: mnemosyne-network
