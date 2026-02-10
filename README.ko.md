@@ -6,7 +6,7 @@
 
 **당신처럼 생각하는 법을 배우는 디지털 클론**
 
-한국어 | [English](README.md)
+한국어 | [English](README.md) | [日本語](README.ja.md) | [中文](README.zh-CN.md)
 
 [![CI](https://github.com/yourusername/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/mnemosyne/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)

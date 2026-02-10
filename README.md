@@ -6,7 +6,7 @@
 
 **Your Digital Clone That Learns How You Think**
 
-[한국어](README.ko.md) | English
+[한국어](README.ko.md) | [日本語](README.ja.md) | [中文](README.zh-CN.md) | English
 
 [![CI](https://github.com/yourusername/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/mnemosyne/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
