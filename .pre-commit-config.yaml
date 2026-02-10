@@ -1,0 +1,175 @@
+# Pre-commit hooks for Mnemosyne
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+# Minimum pre-commit version required
+minimum_pre_commit_version: "3.0.0"
+
+# Skip hooks during rebase
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  # =============================================================================
+  # Code Formatting & Linting (Ruff - fast Python linter)
+  # =============================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      # Linting
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      # Formatting
+      - id: ruff-format
+        name: ruff (format)
+        types_or: [python, pyi]
+
+  # =============================================================================
+  # Type Checking (MyPy)
+  # =============================================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        name: mypy (type check)
+        additional_dependencies:
+          - types-toml
+          - types-requests
+          - pydantic
+        args: [--ignore-missing-imports, --no-error-summary]
+        # Only check main package, not tests
+        files: ^mnemosyne/
+        pass_filenames: false
+        entry: mypy mnemosyne/
+
+  # =============================================================================
+  # General File Checks
+  # =============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Whitespace & Encoding
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+      # File validation
+      - id: check-yaml
+        args: [--unsafe]  # Allow custom tags
+      - id: check-toml
+      - id: check-json
+      - id: check-xml
+
+      # Python specific
+      - id: check-ast
+        name: check python syntax
+      - id: debug-statements
+        name: check for debug statements
+      - id: check-docstring-first
+
+      # Git
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+
+      # Security
+      - id: detect-private-key
+
+  # =============================================================================
+  # Security Scanning
+  # =============================================================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.2
+    hooks:
+      - id: bandit
+        name: bandit (security)
+        args: [-c, pyproject.toml, -r, mnemosyne/]
+        additional_dependencies: ["bandit[toml]"]
+        pass_filenames: false
+
+  # =============================================================================
+  # Commit Message Convention
+  # =============================================================================
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.3.0
+    hooks:
+      - id: commitizen
+        name: commitizen (commit message)
+        stages: [commit-msg]
+
+  # =============================================================================
+  # Documentation
+  # =============================================================================
+  - repo: https://github.com/pycqa/doc8
+    rev: v1.1.2
+    hooks:
+      - id: doc8
+        name: doc8 (rst check)
+        args: [--max-line-length=120]
+        files: \.rst$
+
+  # =============================================================================
+  # TOML Sorting (keeps pyproject.toml clean)
+  # =============================================================================
+  - repo: https://github.com/pappasam/toml-sort
+    rev: v0.24.2
+    hooks:
+      - id: toml-sort-fix
+        name: toml-sort (sort toml files)
+        files: pyproject\.toml$
+
+  # =============================================================================
+  # Shell Script Linting
+  # =============================================================================
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: shellcheck (shell scripts)
+        args: [--severity=warning]
+
+  # =============================================================================
+  # GitHub Actions Linting
+  # =============================================================================
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+        name: actionlint (GitHub Actions)
+
+  # =============================================================================
+  # Markdown Linting
+  # =============================================================================
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.43.0
+    hooks:
+      - id: markdownlint
+        name: markdownlint (markdown)
+        args: [--fix, --disable, MD013, MD033, MD041, --]
+
+  # =============================================================================
+  # Secret Detection
+  # =============================================================================
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets
+        args: [--baseline, .secrets.baseline]
+
+# =============================================================================
+# CI Configuration
+# =============================================================================
+ci:
+  autofix_commit_msg: "style: auto-fix by pre-commit hooks"
+  autofix_prs: true
+  autoupdate_branch: develop
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
+  autoupdate_schedule: weekly
+  skip: [mypy]  # Skip mypy in CI (handled by CI workflow)
+  submodules: false
