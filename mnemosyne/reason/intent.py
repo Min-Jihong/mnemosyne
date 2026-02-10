@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from mnemosyne.llm.base import BaseLLMProvider
+from mnemosyne.llm.base import LLMProvider
 from mnemosyne.store.models import StoredEvent, Screenshot
 from mnemosyne.store.database import Database
 from mnemosyne.reason.context import ContextBuilder
@@ -11,7 +11,7 @@ class IntentInferrer:
     
     def __init__(
         self,
-        llm: BaseLLMProvider,
+        llm: LLMProvider,
         database: Database,
         context_builder: ContextBuilder | None = None,
     ):

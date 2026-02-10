@@ -3,7 +3,7 @@ import random
 from typing import Any
 from dataclasses import dataclass, field
 
-from mnemosyne.llm.base import BaseLLMProvider
+from mnemosyne.llm.base import LLMProvider
 from mnemosyne.store.models import StoredEvent
 from mnemosyne.store.database import Database
 
@@ -51,7 +51,7 @@ class CuriousLLM:
     
     def __init__(
         self,
-        llm: BaseLLMProvider,
+        llm: LLMProvider,
         database: Database,
         curiosity_threshold: float = 0.7,
     ):
