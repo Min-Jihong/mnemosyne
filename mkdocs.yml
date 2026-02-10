@@ -116,6 +116,12 @@ nav:
     - Memory: guide/memory.md
     - Execution: guide/execution.md
     - Web Interface: guide/web-interface.md
+    - Terminal UI: guide/tui.md
+    - Plugins: guide/plugins.md
+    - Hooks: guide/hooks.md
+    - Agents: guide/agents.md
+    - Background Tasks: guide/tasks.md
+    - WebSocket Gateway: guide/gateway.md
   - API Reference:
     - Overview: api/index.md
     - Capture: api/capture.md
