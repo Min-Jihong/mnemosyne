@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 # Cancel in-progress runs for the same PR/branch
 concurrency:
@@ -15,6 +15,18 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
+  # Block direct PRs to main (must go through develop first)
+  check-pr-target:
+    name: Check PR Target
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Block PRs directly to main
+        if: github.base_ref == 'main' && github.head_ref != 'develop'
+        run: |
+          echo "::error::Direct PRs to main are not allowed. Please target 'develop' branch first."
+          exit 1
+
   # Skip CI for docs-only changes
   changes:
     name: Detect Changes

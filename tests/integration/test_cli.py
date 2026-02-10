@@ -46,17 +46,15 @@ class TestCLISetupCommand:
 class TestCLISessionsCommand:
     """Test sessions command."""
 
-    @patch("mnemosyne.cli.main.Database")
+    @patch("mnemosyne.store.Database")
     def test_sessions_list(self, mock_db_class):
         """Test sessions list command."""
-        # Setup mock
         mock_db = MagicMock()
         mock_db.list_sessions = AsyncMock(return_value=[])
         mock_db.close = AsyncMock()
         mock_db_class.return_value = mock_db
 
         result = runner.invoke(app, ["sessions"])
-        # Should complete without error
         assert result.exit_code in [0, 1]
 
 
@@ -68,7 +66,7 @@ class TestCLIMemoryCommand:
         result = runner.invoke(app, ["memory", "--help"])
         assert result.exit_code == 0
 
-    @patch("mnemosyne.cli.main.MemoryManager")
+    @patch("mnemosyne.memory.PersistentMemory")
     def test_memory_recent(self, mock_memory_class):
         """Test memory --recent command."""
         mock_memory = MagicMock()

@@ -80,6 +80,9 @@ class LLMProvider(ABC):
             return False
 
 
+BaseLLMProvider = LLMProvider
+
+
 class EmbeddingProvider(ABC):
     """Base class for embedding providers."""
     

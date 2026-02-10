@@ -40,7 +40,6 @@ def create_llm_provider(config: LLMConfig) -> LLMProvider:
             )
         
         case LLMProviderEnum.CUSTOM:
-            # Custom provider uses OpenAI-compatible API
             if not api_key:
                 raise ValueError("API key is required for custom provider.")
             if not config.base_url:
@@ -53,6 +52,35 @@ def create_llm_provider(config: LLMConfig) -> LLMProvider:
         
         case _:
             raise ValueError(f"Unknown LLM provider: {config.provider}")
+
+
+def create_llm_provider_with_failover(
+    primary_config: LLMConfig,
+    fallback_configs: list[LLMConfig] | None = None,
+) -> LLMProvider:
+    """Create an LLM provider with automatic failover to fallback providers."""
+    from mnemosyne.llm.failover import FailoverLLMProvider, FailoverConfig
+    
+    primary = create_llm_provider(primary_config)
+    
+    if not fallback_configs:
+        return primary
+    
+    fallbacks = []
+    for config in fallback_configs:
+        try:
+            fallbacks.append(create_llm_provider(config))
+        except ValueError:
+            pass
+    
+    if not fallbacks:
+        return primary
+    
+    return FailoverLLMProvider(
+        primary=primary,
+        fallbacks=fallbacks,
+        config=FailoverConfig(max_retries=3, cooldown_seconds=60),
+    )
 
 
 def create_embedding_provider(config: EmbeddingConfig) -> EmbeddingProvider:

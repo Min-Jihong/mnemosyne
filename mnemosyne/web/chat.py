@@ -72,20 +72,36 @@ Available commands the user can give you:
         provider_enum = LLMProvider(provider.lower())
 
         default_models = {
-            LLMProvider.OPENAI: "gpt-4-turbo-preview",
-            LLMProvider.ANTHROPIC: "claude-3-opus-20240229",
-            LLMProvider.GOOGLE: "gemini-pro",
-            LLMProvider.OLLAMA: "llama2",
+            LLMProvider.OPENAI: "gpt-4o",
+            LLMProvider.ANTHROPIC: "claude-sonnet-4-20250514",
+            LLMProvider.GOOGLE: "gemini-2.0-flash",
+            LLMProvider.OLLAMA: "llama3.2",
         }
+
+        if provider_enum == LLMProvider.OLLAMA and not model:
+            model = self._detect_ollama_model()
 
         config = LLMConfig(
             provider=provider_enum,
             api_key=api_key,
-            model=model or default_models.get(provider_enum, "gpt-4"),
+            model=model or default_models.get(provider_enum, "gpt-4o"),
         )
 
         self.set_llm_config(config)
         self._save_config(config)
+
+    def _detect_ollama_model(self) -> str | None:
+        import httpx
+        try:
+            response = httpx.get("http://localhost:11434/api/tags", timeout=5.0)
+            if response.status_code == 200:
+                data = response.json()
+                models = data.get("models", [])
+                if models:
+                    return models[0]["name"].split(":")[0]
+        except Exception:
+            pass
+        return "llama3.2"
 
     def _save_config(self, config: LLMConfig) -> None:
         config_path = self.data_dir / "config.json"
@@ -177,23 +193,25 @@ Available commands the user can give you:
         if self.memory:
             relevant_memories = self.memory.recall(query=message, n_results=5)
 
-        messages = [{"role": "system", "content": self.SYSTEM_PROMPT}]
+        from mnemosyne.llm.base import Message as LLMMessage
+        messages: list[LLMMessage] = [LLMMessage(role="system", content=self.SYSTEM_PROMPT)]
 
         if relevant_memories:
             memory_context = "\n".join([
                 f"- [{m.type.value}] {m.content[:200]}"
                 for m in relevant_memories
             ])
-            messages.append({
-                "role": "system",
-                "content": f"Relevant memories about the user:\n{memory_context}",
-            })
+            messages.append(LLMMessage(
+                role="system",
+                content=f"Relevant memories about the user:\n{memory_context}",
+            ))
 
         for msg in conv.messages[-10:]:
-            messages.append({"role": msg.role, "content": msg.content})
+            messages.append(LLMMessage(role=msg.role, content=msg.content))
 
         try:
-            response = await self.llm.generate(messages)
+            result = await self.llm.complete(messages)
+            response = result.content
         except Exception as e:
             response = f"Error generating response: {str(e)}"
 

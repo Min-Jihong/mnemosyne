@@ -149,7 +149,9 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR)) if TEMPLATES_DIR.exists() else None
+templates = None
+if TEMPLATES_DIR.exists() and (TEMPLATES_DIR / "index.html").exists():
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 # ============================================================================
@@ -283,30 +285,46 @@ async def get_providers():
             {
                 "id": "openai",
                 "name": "OpenAI",
-                "models": ["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"],
-                "default_model": "gpt-4-turbo-preview",
+                "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini"],
+                "default_model": "gpt-4o",
             },
             {
                 "id": "anthropic", 
                 "name": "Anthropic",
-                "models": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
-                "default_model": "claude-3-opus-20240229",
+                "models": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
+                "default_model": "claude-sonnet-4-20250514",
             },
             {
                 "id": "google",
                 "name": "Google",
-                "models": ["gemini-pro", "gemini-ultra"],
-                "default_model": "gemini-pro",
+                "models": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
+                "default_model": "gemini-2.0-flash",
             },
             {
                 "id": "ollama",
                 "name": "Ollama (Local)",
-                "models": ["llama2", "mistral", "codellama", "mixtral"],
-                "default_model": "llama2",
+                "models": ["llama3.2", "llama3.1", "mistral", "gemma3", "deepseek-r1", "qwen2.5", "codellama"],
+                "default_model": "llama3.2",
                 "requires_api_key": False,
             },
         ]
     }
+
+
+@app.get("/api/ollama/models")
+async def get_ollama_models():
+    """Get installed Ollama models."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("http://localhost:11434/api/tags")
+            if response.status_code == 200:
+                data = response.json()
+                models = [m["name"].split(":")[0] for m in data.get("models", [])]
+                return {"models": models, "running": True}
+    except Exception:
+        pass
+    return {"models": [], "running": False}
 
 
 # ============================================================================
@@ -476,7 +494,7 @@ async def list_sessions():
 
 def get_embedded_html() -> str:
     """Return embedded HTML for the web UI."""
-    return '''<!DOCTYPE html>
+    return r'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1124,24 +1142,27 @@ def get_embedded_html() -> str:
             
             <div class="form-group">
                 <label>LLM Provider</label>
-                <select id="providerSelect" onchange="updateModelOptions()">
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="google">Google</option>
-                    <option value="ollama">Ollama (Local)</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label>Model</label>
-                <select id="modelSelect">
-                    <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
+                <select id="providerSelect" onchange="updateProviderUI()">
+                    <option value="openai">OpenAI (GPT-4o)</option>
+                    <option value="anthropic">Anthropic (Claude Sonnet 4)</option>
+                    <option value="google">Google (Gemini 2.0)</option>
+                    <option value="ollama">Ollama (Local - No API Key)</option>
                 </select>
             </div>
             
             <div class="form-group" id="apiKeyGroup">
                 <label>API Key</label>
                 <input type="password" id="apiKeyInput" placeholder="Enter your API key">
+                <small style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem; display: block;">
+                    Model is auto-selected. Change via chat: "use gpt-4o-mini"
+                </small>
+            </div>
+            
+            <div class="form-group" id="ollamaInfo" style="display: none;">
+                <div style="background: var(--bg-tertiary); padding: 1rem; border-radius: 0.5rem; font-size: 0.875rem;">
+                    <strong>Ollama detected!</strong><br>
+                    <span id="ollamaModelInfo">Checking installed models...</span>
+                </div>
             </div>
             
             <div class="modal-actions">
@@ -1204,26 +1225,45 @@ def get_embedded_html() -> str:
                 const data = await res.json();
                 providers = {};
                 data.providers.forEach(p => providers[p.id] = p);
-                updateModelOptions();
+                updateProviderUI();
             } catch (e) {
                 console.error('Failed to load providers:', e);
             }
         }
         
-        // Update model options based on provider
-        function updateModelOptions() {
+        // Update UI based on provider selection
+        function updateProviderUI() {
             const provider = document.getElementById('providerSelect').value;
-            const modelSelect = document.getElementById('modelSelect');
             const apiKeyGroup = document.getElementById('apiKeyGroup');
+            const ollamaInfo = document.getElementById('ollamaInfo');
             
             const p = providers[provider];
             if (p) {
-                modelSelect.innerHTML = p.models.map(m => 
-                    `<option value="${m}">${m}</option>`
-                ).join('');
-                
-                // Hide API key for Ollama
-                apiKeyGroup.style.display = p.requires_api_key === false ? 'none' : 'block';
+                if (p.requires_api_key === false) {
+                    apiKeyGroup.style.display = 'none';
+                    ollamaInfo.style.display = 'block';
+                    checkOllamaModels();
+                } else {
+                    apiKeyGroup.style.display = 'block';
+                    ollamaInfo.style.display = 'none';
+                }
+            }
+        }
+        
+        // Check Ollama installed models
+        async function checkOllamaModels() {
+            const infoEl = document.getElementById('ollamaModelInfo');
+            try {
+                const res = await fetch('/api/ollama/models');
+                const data = await res.json();
+                if (data.models && data.models.length > 0) {
+                    infoEl.innerHTML = `Will use: <strong>${data.models[0]}</strong><br>` +
+                        `Installed: ${data.models.join(', ')}`;
+                } else {
+                    infoEl.innerHTML = 'No models found. Run: <code>ollama pull llama3.2</code>';
+                }
+            } catch (e) {
+                infoEl.innerHTML = 'Ollama not running. Start it first.';
             }
         }
         
@@ -1238,7 +1278,6 @@ def get_embedded_html() -> str:
         
         async function saveSettings() {
             const provider = document.getElementById('providerSelect').value;
-            const model = document.getElementById('modelSelect').value;
             const apiKey = document.getElementById('apiKeyInput').value;
             
             if (providers[provider]?.requires_api_key !== false && !apiKey) {
@@ -1250,7 +1289,7 @@ def get_embedded_html() -> str:
                 const res = await fetch('/api/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ provider, model, api_key: apiKey })
+                    body: JSON.stringify({ provider, api_key: apiKey })
                 });
                 
                 if (res.ok) {

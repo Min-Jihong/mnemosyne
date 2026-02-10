@@ -339,15 +339,63 @@ def execute(
 
 
 @app.command()
-def tui():
-    """Launch the interactive terminal user interface."""
+def tui(
+    port: int = typer.Option(8000, "--port", "-p", help="Web server port"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
+):
+    """Launch the interactive TUI with web interface."""
+    import threading
+    import webbrowser
+    import time
+    
+    try:
+        import textual
+    except ImportError:
+        console.print("[red]Textual not installed.[/red]")
+        console.print("Install with: [cyan]pip install textual[/cyan]")
+        console.print("Or install all TUI deps: [cyan]pip install 'mnemosyne[tui]'[/cyan]")
+        raise typer.Exit(1)
+    
     try:
         from mnemosyne.tui.app import run_tui
-    except ImportError:
-        console.print("[red]TUI dependencies not installed.[/red]")
-        console.print("Install with: pip install 'mnemosyne[tui]'")
+    except ImportError as e:
+        console.print(f"[red]Failed to load TUI: {e}[/red]")
         raise typer.Exit(1)
-
+    
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[yellow]Web dependencies not installed. Running TUI only.[/yellow]")
+        console.print("Install with: [cyan]pip install 'mnemosyne[web]'[/cyan]")
+        run_tui()
+        return
+    
+    def run_web_server():
+        config = uvicorn.Config(
+            "mnemosyne.web.app:app",
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+        )
+        server = uvicorn.Server(config)
+        server.run()
+    
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+    
+    time.sleep(1.5)
+    
+    if not no_browser:
+        webbrowser.open(f"http://localhost:{port}")
+    
+    console.print(Panel(
+        f"[bold green]Mnemosyne Started[/bold green]\n\n"
+        f"Web UI: [cyan]http://localhost:{port}[/cyan]\n"
+        f"TUI: Running in terminal\n\n"
+        "Press [bold]q[/bold] in TUI or [bold]Ctrl+C[/bold] to exit.",
+        title="🧠 Mnemosyne",
+    ))
+    
     run_tui()
 
 
@@ -395,6 +443,99 @@ def status():
         ))
     except Exception:
         console.print("[yellow]Configuration not found. Run 'mnemosyne setup' first.[/yellow]")
+
+
+@app.command()
+def doctor():
+    """Diagnose installation and environment issues."""
+    import platform
+    import shutil
+    
+    checks: list[tuple[str, bool, str]] = []
+    
+    checks.append(("Mnemosyne version", True, __version__))
+    checks.append(("Python version", True, f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"))
+    checks.append(("Platform", True, f"{platform.system()} {platform.machine()}"))
+    
+    config_path = DEFAULT_DATA_DIR / "config.toml"
+    checks.append(("Config file", config_path.exists(), str(config_path)))
+    
+    data_dir = DEFAULT_DATA_DIR
+    checks.append(("Data directory", data_dir.exists(), str(data_dir)))
+    
+    try:
+        from mnemosyne.config import load_settings
+        settings = load_settings()
+        checks.append(("Configuration", True, f"Provider: {settings.llm.provider.value}"))
+    except Exception as e:
+        checks.append(("Configuration", False, str(e)[:50]))
+    
+    try:
+        import chromadb
+        checks.append(("ChromaDB", True, chromadb.__version__))
+    except (ImportError, Exception) as e:
+        error_msg = str(e)[:30] if str(e) else "Import failed"
+        checks.append(("ChromaDB", False, error_msg))
+    
+    try:
+        import anthropic
+        checks.append(("Anthropic SDK", True, anthropic.__version__))
+    except ImportError:
+        checks.append(("Anthropic SDK", False, "Not installed"))
+    
+    try:
+        import openai
+        checks.append(("OpenAI SDK", True, openai.__version__))
+    except ImportError:
+        checks.append(("OpenAI SDK", False, "Not installed"))
+    
+    try:
+        import fastapi
+        checks.append(("FastAPI (web)", True, fastapi.__version__))
+    except ImportError:
+        checks.append(("FastAPI (web)", False, "Not installed (optional)"))
+    
+    try:
+        import textual
+        checks.append(("Textual (TUI)", True, textual.__version__))
+    except ImportError:
+        checks.append(("Textual (TUI)", False, "Not installed (optional)"))
+    
+    try:
+        import pynput
+        checks.append(("pynput (capture)", True, "Available"))
+    except ImportError:
+        checks.append(("pynput (capture)", False, "Not installed"))
+    
+    if platform.system() == "Darwin":
+        try:
+            import Quartz
+            checks.append(("macOS Quartz", True, "Available"))
+        except ImportError:
+            checks.append(("macOS Quartz", False, "Not installed (optional)"))
+    
+    console.print(Panel("[bold]Mnemosyne Doctor[/bold]\nDiagnostic information for troubleshooting", title="🩺 Doctor"))
+    
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Check", style="cyan")
+    table.add_column("Status")
+    table.add_column("Details")
+    
+    all_passed = True
+    for name, passed, details in checks:
+        status_icon = "[green]✓[/green]" if passed else "[red]✗[/red]"
+        if not passed and "optional" not in details.lower():
+            all_passed = False
+        table.add_row(name, status_icon, details)
+    
+    console.print(table)
+    
+    if all_passed:
+        console.print("\n[green]All checks passed![/green]")
+    else:
+        console.print("\n[yellow]Some checks failed. Run 'mnemosyne setup' to configure.[/yellow]")
+    
+    console.print("\n[dim]Copy this output when reporting issues.[/dim]")
 
 
 @app.command()
