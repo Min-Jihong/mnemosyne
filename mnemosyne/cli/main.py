@@ -339,6 +339,19 @@ def execute(
 
 
 @app.command()
+def tui():
+    """Launch the interactive terminal user interface."""
+    try:
+        from mnemosyne.tui.app import run_tui
+    except ImportError:
+        console.print("[red]TUI dependencies not installed.[/red]")
+        console.print("Install with: pip install 'mnemosyne[tui]'")
+        raise typer.Exit(1)
+
+    run_tui()
+
+
+@app.command()
 def web(
     host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind"),
     port: int = typer.Option(8000, "--port", "-p", help="Port to bind"),
