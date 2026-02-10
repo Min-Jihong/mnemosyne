@@ -1,0 +1,56 @@
+/* Mnemosyne Documentation Custom Styles */
+
+/* Hero section styling */
+.md-typeset h1 {
+    font-weight: 700;
+}
+
+/* Card grid improvements */
+.grid.cards > ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem;
+}
+
+.grid.cards > ul > li {
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.grid.cards > ul > li:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Code block styling */
+.md-typeset pre > code {
+    border-radius: 0.5rem;
+}
+
+/* Admonition improvements */
+.md-typeset .admonition {
+    border-radius: 0.5rem;
+}
+
+/* Table styling */
+.md-typeset table:not([class]) {
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+/* Footer */
+.md-footer {
+    margin-top: 2rem;
+}
+
+/* Brain emoji animation for hero */
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.md-typeset h1 .twemoji {
+    animation: pulse 2s ease-in-out infinite;
+}
