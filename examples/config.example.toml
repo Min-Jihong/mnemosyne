@@ -1,0 +1,141 @@
+# Mnemosyne Example Configuration
+# Copy this file to ~/.mnemosyne/config.toml
+
+# =============================================================================
+# LLM Provider Configuration
+# =============================================================================
+[llm]
+# Available providers: openai, anthropic, google, ollama
+provider = "anthropic"
+
+# Model to use (provider-specific)
+# OpenAI: gpt-4-turbo-preview, gpt-4, gpt-3.5-turbo
+# Anthropic: claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307
+# Google: gemini-pro, gemini-ultra
+# Ollama: llama2, mistral, codellama, mixtral
+model = "claude-3-opus-20240229"
+
+# API key (or use environment variable)
+# For Ollama, this can be empty
+api_key = ""
+
+# Optional: API base URL (for custom endpoints or proxies)
+# base_url = "https://api.anthropic.com"
+
+# Optional: Request timeout in seconds
+# timeout = 30
+
+# =============================================================================
+# Curiosity Mode Configuration
+# =============================================================================
+[curiosity]
+# How proactive should the AI be in asking questions?
+# - passive: Only answers questions, doesn't ask
+# - active: Asks questions after analyzing sessions
+# - proactive: Constantly curious, asks questions during recording
+mode = "active"
+
+# Minimum importance threshold for curiosity (0.0 - 1.0)
+# Higher = fewer but more important questions
+threshold = 0.7
+
+# Maximum questions per session analysis
+max_questions = 10
+
+# =============================================================================
+# Recording Configuration
+# =============================================================================
+[recording]
+# Screenshot settings
+screenshot_quality = 80          # JPEG quality (0-100)
+screenshot_format = "webp"       # webp, png, or jpeg
+screenshot_on_click = true       # Capture on mouse clicks
+screenshot_on_hotkey = true      # Capture on hotkey combos
+screenshot_interval = 0          # Auto-capture interval (0 = disabled)
+
+# Mouse tracking
+mouse_throttle_ms = 50           # Minimum ms between mouse move events
+track_mouse_position = true
+track_clicks = true
+track_scroll = true
+
+# Keyboard tracking
+track_keystrokes = true
+track_hotkeys = true
+track_typing = true              # Track typed text (careful with sensitive data)
+
+# Window tracking
+track_window_changes = true
+track_window_title = true
+track_window_bounds = true
+
+# =============================================================================
+# Memory Configuration
+# =============================================================================
+[memory]
+# Vector store settings
+embedding_model = "all-MiniLM-L6-v2"  # Sentence transformer model
+collection_name = "mnemosyne_memories"
+
+# Memory consolidation
+auto_consolidate = true
+consolidation_interval = 3600    # Seconds between consolidation runs
+
+# Retention
+max_memories = 100000            # Maximum memories to store
+importance_decay = 0.1           # Daily importance decay rate
+
+# =============================================================================
+# Execution Agent Configuration
+# =============================================================================
+[execution]
+# Safety settings
+enabled = true
+require_confirmation = true      # Always ask before executing
+
+# Rate limiting
+max_actions_per_minute = 60
+cooldown_between_actions_ms = 100
+
+# Protected applications (never interact with these)
+blocked_apps = [
+    "1Password",
+    "Keychain Access",
+    "System Preferences",
+    "System Settings",
+    "Terminal",
+    "iTerm",
+]
+
+# Blocked hotkeys (never execute these)
+blocked_hotkeys = [
+    ["cmd", "q"],
+    ["cmd", "shift", "q"],
+    ["cmd", "option", "esc"],
+]
+
+# Safe zone (restrict actions to screen region)
+# safe_zone = { x = 0, y = 0, width = 1920, height = 1080 }
+
+# =============================================================================
+# Web Interface Configuration
+# =============================================================================
+[web]
+host = "0.0.0.0"
+port = 8000
+debug = false
+cors_origins = ["*"]
+
+# Session settings
+session_timeout = 3600           # Seconds before session expires
+max_conversations = 100          # Max stored conversations
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+[logging]
+level = "INFO"                   # DEBUG, INFO, WARNING, ERROR
+format = "pretty"                # pretty, json
+file = ""                        # Log file path (empty = stdout only)
+max_size_mb = 100                # Max log file size before rotation
+backup_count = 5                 # Number of backup files to keep
