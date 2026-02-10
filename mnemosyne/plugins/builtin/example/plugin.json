@@ -1,0 +1,32 @@
+{
+    "name": "example",
+    "version": "1.0.0",
+    "description": "Example plugin demonstrating the Mnemosyne plugin system",
+    "author": "Mnemosyne Team",
+    "license": "MIT",
+    "entry_point": "__init__.py",
+    "plugin_class": "ExamplePlugin",
+    "capabilities": ["hooks"],
+    "hooks": ["post_capture", "pre_inference"],
+    "dependencies": [],
+    "python_requires": ">=3.11",
+    "pip_dependencies": [],
+    "config_schema": {
+        "type": "object",
+        "properties": {
+            "greeting": {
+                "type": "string",
+                "description": "Greeting message"
+            },
+            "log_events": {
+                "type": "boolean",
+                "description": "Whether to log captured events"
+            }
+        }
+    },
+    "default_config": {
+        "greeting": "Hello from Example Plugin!",
+        "log_events": true
+    },
+    "mnemosyne_version": ">=0.1.0"
+}
