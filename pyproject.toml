@@ -1,0 +1,99 @@
+[project]
+name = "mnemosyne"
+version = "0.1.0"
+description = "Learn to Think Like You - A digital twin that learns your computer behavior and thought patterns"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "mjh" }
+]
+keywords = ["ai", "behavioral-cloning", "digital-twin", "automation", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    # Core
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "toml>=0.10",
+    "rich>=13.0",         # Beautiful CLI
+    "typer>=0.9",         # CLI framework
+    
+    # Input Capture
+    "pynput>=1.7",        # Mouse/Keyboard capture
+    
+    # Database
+    "aiosqlite>=0.19",    # Async SQLite
+    
+    # Vector Store
+    "chromadb>=0.4",      # Local vector DB
+    
+    # LLM Providers
+    "anthropic>=0.25",    # Claude
+    "openai>=1.0",        # OpenAI / OpenAI-compatible
+    "google-generativeai>=0.5",  # Gemini
+    "httpx>=0.27",        # For Ollama and custom APIs
+    
+    # Image Processing
+    "pillow>=10.0",       # Screenshot processing
+    
+    # Async
+    "asyncio>=3.4",
+    "aiofiles>=23.0",
+]
+
+[project.optional-dependencies]
+macos = [
+    "pyobjc-core>=10.0",         # macOS native APIs
+    "pyobjc-framework-Cocoa>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
+    "pyobjc-framework-ApplicationServices>=10.0",
+]
+ml = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "transformers>=4.30",
+    "timm>=0.9",          # Vision models
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+mnemosyne = "mnemosyne.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mnemosyne"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]  # Line length handled separately
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
