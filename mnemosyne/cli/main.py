@@ -339,6 +339,35 @@ def execute(
 
 
 @app.command()
+def web(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to bind"),
+    reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload"),
+):
+    """Start the web interface for Mnemosyne."""
+    try:
+        from mnemosyne.web.app import run_server
+    except ImportError:
+        console.print("[red]Web dependencies not installed.[/red]")
+        console.print("Install with: pip install 'mnemosyne[web]'")
+        raise typer.Exit(1)
+    
+    console.print(Panel(
+        f"[bold green]Starting Mnemosyne Web UI[/bold green]\n\n"
+        f"Open [cyan]http://localhost:{port}[/cyan] in your browser\n\n"
+        f"Features:\n"
+        f"  • Chat with your digital twin\n"
+        f"  • Configure LLM API keys\n"
+        f"  • Control recording sessions\n"
+        f"  • Search memories\n\n"
+        "Press [bold]Ctrl+C[/bold] to stop.",
+        title="🧠 Mnemosyne",
+    ))
+    
+    run_server(host=host, port=port, reload=reload)
+
+
+@app.command()
 def status():
     """Show current status and configuration."""
     from mnemosyne.config import load_settings
