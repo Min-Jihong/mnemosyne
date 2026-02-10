@@ -1,8 +1,13 @@
-"""Main CLI entry point for Mnemosyne."""
+import sys
+import signal
+import asyncio
+from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mnemosyne import __version__
 
@@ -12,6 +17,8 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+DEFAULT_DATA_DIR = Path.home() / ".mnemosyne"
 
 
 @app.command()
@@ -23,22 +30,312 @@ def setup():
 
 @app.command()
 def record(
-    description: str = typer.Option(None, "--description", "-d", help="Session description"),
+    name: str = typer.Option("", "--name", "-n", help="Session name"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d", help="Data directory"),
 ):
     """Start recording your computer activity."""
+    from mnemosyne.store.session_manager import SessionManager
+    from mnemosyne.capture.recorder import RecorderConfig
+    
+    config = RecorderConfig(output_dir=data_dir / "screenshots")
+    manager = SessionManager(data_dir=data_dir, recorder_config=config)
+    
+    session = manager.start_session(name=name)
+    
     console.print(Panel(
-        "[bold green]Recording started![/bold green]\n"
-        "Press Ctrl+C to stop recording.",
+        f"[bold green]Recording started![/bold green]\n\n"
+        f"Session ID: [cyan]{session.id}[/cyan]\n"
+        f"Name: {session.name}\n\n"
+        "Press [bold]Ctrl+C[/bold] to stop recording.",
         title="Mnemosyne Recorder",
     ))
-    # TODO: Implement recording
+    
+    def signal_handler(sig, frame):
+        console.print("\n[yellow]Stopping recording...[/yellow]")
+        final_session = manager.stop_session()
+        if final_session:
+            console.print(Panel(
+                f"[bold]Session completed![/bold]\n\n"
+                f"Duration: {final_session.duration_seconds:.1f}s\n"
+                f"Events: {final_session.event_count}\n"
+                f"Screenshots: {final_session.screenshot_count}",
+                title="Recording Summary",
+            ))
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    try:
+        while True:
+            signal.pause()
+    except AttributeError:
+        import time
+        while True:
+            time.sleep(1)
 
 
 @app.command()
-def stop():
-    """Stop the current recording session."""
-    console.print("[yellow]Stopping recording...[/yellow]")
-    # TODO: Implement stop
+def sessions(
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    limit: int = typer.Option(10, "--limit", "-l", help="Number of sessions to show"),
+):
+    """List recorded sessions."""
+    from mnemosyne.store.database import Database
+    
+    db = Database(data_dir / "mnemosyne.db")
+    session_list = db.list_sessions(limit=limit)
+    
+    if not session_list:
+        console.print("[yellow]No sessions found.[/yellow]")
+        return
+    
+    table = Table(title="Recording Sessions")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name")
+    table.add_column("Duration")
+    table.add_column("Events")
+    table.add_column("Screenshots")
+    
+    for s in session_list:
+        duration = f"{s.duration_seconds:.1f}s" if s.ended_at else "Running"
+        table.add_row(
+            s.id[:8],
+            s.name[:30] if s.name else "-",
+            duration,
+            str(s.event_count),
+            str(s.screenshot_count),
+        )
+    
+    console.print(table)
+
+
+@app.command()
+def analyze(
+    session_id: str = typer.Argument(..., help="Session ID to analyze"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    batch_size: int = typer.Option(10, "--batch", "-b", help="Batch size for analysis"),
+):
+    """Analyze a session with LLM to infer intents."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.store.database import Database
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.reason.intent import IntentInferrer
+    
+    settings = load_settings()
+    db = Database(data_dir / "mnemosyne.db")
+    
+    session = db.get_session(session_id)
+    if not session:
+        for s in db.list_sessions():
+            if s.id.startswith(session_id):
+                session = s
+                break
+    
+    if not session:
+        console.print(f"[red]Session not found: {session_id}[/red]")
+        raise typer.Exit(1)
+    
+    llm = create_llm_provider(settings.llm)
+    inferrer = IntentInferrer(llm=llm, database=db)
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Analyzing events...", total=None)
+        
+        async def run_analysis():
+            return await inferrer.batch_infer(
+                session_id=session.id,
+                batch_size=batch_size,
+            )
+        
+        count = asyncio.run(run_analysis())
+        progress.update(task, completed=True)
+    
+    console.print(f"[green]Analyzed {count} events.[/green]")
+
+
+@app.command()
+def curious(
+    session_id: str = typer.Argument(..., help="Session ID to explore"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Let the curious LLM explore and ask questions about a session."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.store.database import Database
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.reason.curious import CuriousLLM
+    from mnemosyne.store.models import StoredEvent
+    
+    settings = load_settings()
+    db = Database(data_dir / "mnemosyne.db")
+    
+    session = db.get_session(session_id)
+    if not session:
+        for s in db.list_sessions():
+            if s.id.startswith(session_id):
+                session = s
+                break
+    
+    if not session:
+        console.print(f"[red]Session not found: {session_id}[/red]")
+        raise typer.Exit(1)
+    
+    llm = create_llm_provider(settings.llm)
+    curious_llm = CuriousLLM(llm=llm, database=db)
+    
+    events = db.get_events(session.id, limit=100)
+    
+    console.print(Panel(
+        f"[bold]Exploring session:[/bold] {session.name or session.id}\n"
+        f"Events: {len(events)}",
+        title="Curious LLM",
+    ))
+    
+    async def run_curiosity():
+        return await curious_llm.observe_and_wonder(events)
+    
+    curiosities = asyncio.run(run_curiosity())
+    
+    if curiosities:
+        console.print("\n[bold cyan]Questions generated:[/bold cyan]\n")
+        for i, c in enumerate(curiosities, 1):
+            importance_color = "green" if c.importance > 0.7 else "yellow" if c.importance > 0.4 else "white"
+            console.print(f"  {i}. [{importance_color}]{c.question}[/{importance_color}]")
+            console.print(f"     Category: {c.category} | Importance: {c.importance:.2f}")
+            console.print()
+    else:
+        console.print("[yellow]No curiosities generated. Need more events.[/yellow]")
+
+
+@app.command()
+def memory(
+    query: str = typer.Argument(None, help="Search query for memories"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    recent: bool = typer.Option(False, "--recent", "-r", help="Show recent memories"),
+    limit: int = typer.Option(10, "--limit", "-l", help="Number of results"),
+):
+    """Search or browse persistent memory."""
+    from mnemosyne.memory.persistent import PersistentMemory
+    
+    mem = PersistentMemory(data_dir=data_dir / "memory")
+    
+    if recent or not query:
+        memories = mem.get_recent(n=limit)
+        title = "Recent Memories"
+    else:
+        memories = mem.recall(query=query, n_results=limit)
+        title = f"Memories matching '{query}'"
+    
+    if not memories:
+        console.print("[yellow]No memories found.[/yellow]")
+        return
+    
+    table = Table(title=title)
+    table.add_column("Type", style="cyan")
+    table.add_column("Content")
+    table.add_column("Importance")
+    table.add_column("Accessed")
+    
+    for m in memories:
+        content = m.content[:50] + "..." if len(m.content) > 50 else m.content
+        table.add_row(
+            m.type.value,
+            content,
+            f"{m.importance:.2f}",
+            str(m.access_count),
+        )
+    
+    console.print(table)
+    console.print(f"\n[dim]Total memories: {mem.count()}[/dim]")
+
+
+@app.command()
+def export(
+    session_id: str = typer.Argument(..., help="Session ID to export"),
+    output: Path = typer.Option(Path("export"), "--output", "-o", help="Output directory"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Export session data for training."""
+    from mnemosyne.store.database import Database
+    from mnemosyne.learn.dataset import BehaviorDataset
+    
+    db = Database(data_dir / "mnemosyne.db")
+    dataset = BehaviorDataset(database=db)
+    
+    output.mkdir(parents=True, exist_ok=True)
+    output_file = output / f"{session_id}.jsonl"
+    
+    count = dataset.export_to_jsonl(session_id, output_file)
+    stats = dataset.get_statistics(session_id)
+    
+    console.print(Panel(
+        f"[bold green]Export complete![/bold green]\n\n"
+        f"File: {output_file}\n"
+        f"Events: {count}\n"
+        f"Intent coverage: {stats['intent_coverage']:.1%}",
+        title="Export Summary",
+    ))
+
+
+@app.command()
+def execute(
+    goal: str = typer.Argument(..., help="Goal to execute"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    confirm: bool = typer.Option(True, "--confirm/--no-confirm", help="Require confirmation"),
+    max_steps: int = typer.Option(20, "--max-steps", "-m", help="Maximum steps"),
+):
+    """Execute a goal using the learned behavior model."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.memory.persistent import PersistentMemory
+    from mnemosyne.execute.agent import ExecutionAgent
+    from mnemosyne.execute.safety import SafetyConfig
+    
+    settings = load_settings()
+    llm = create_llm_provider(settings.llm)
+    mem = PersistentMemory(data_dir=data_dir / "memory")
+    
+    safety_config = SafetyConfig(
+        enabled=True,
+        require_confirmation=confirm,
+    )
+    
+    agent = ExecutionAgent(
+        llm=llm,
+        memory=mem,
+        safety_config=safety_config,
+        on_action=lambda t, d: console.print(f"  [cyan]Action:[/cyan] {t}"),
+        on_error=lambda e: console.print(f"  [red]Error:[/red] {e}"),
+    )
+    
+    console.print(Panel(
+        f"[bold]Goal:[/bold] {goal}\n"
+        f"[bold]Max steps:[/bold] {max_steps}\n"
+        f"[bold]Confirmation:[/bold] {'Required' if confirm else 'Not required'}",
+        title="Execution Agent",
+    ))
+    
+    console.print("\n[yellow]Starting execution...[/yellow]\n")
+    
+    result = asyncio.run(
+        agent.execute_goal(
+            goal=goal,
+            max_steps=max_steps,
+            require_confirmation=confirm,
+        )
+    )
+    
+    status = "[green]Success[/green]" if result["completed"] else "[red]Failed[/red]"
+    console.print(Panel(
+        f"[bold]Status:[/bold] {status}\n"
+        f"[bold]Actions taken:[/bold] {result['actions_taken']}\n"
+        f"[bold]Errors:[/bold] {len(result['errors'])}",
+        title="Execution Result",
+    ))
 
 
 @app.command()
@@ -46,15 +343,16 @@ def status():
     """Show current status and configuration."""
     from mnemosyne.config import load_settings
     
-    settings = load_settings()
-    
-    console.print(Panel(
-        f"[bold]LLM Provider:[/bold] {settings.llm.provider.value}\n"
-        f"[bold]Model:[/bold] {settings.llm.model}\n"
-        f"[bold]Embedding:[/bold] {settings.embedding.provider.value} ({settings.embedding.model})\n"
-        f"[bold]Curiosity Mode:[/bold] {settings.curiosity.mode.value}",
-        title="Mnemosyne Status",
-    ))
+    try:
+        settings = load_settings()
+        console.print(Panel(
+            f"[bold]LLM Provider:[/bold] {settings.llm.provider.value}\n"
+            f"[bold]Model:[/bold] {settings.llm.model}\n"
+            f"[bold]Curiosity Mode:[/bold] {settings.curiosity.mode.value}",
+            title="Mnemosyne Status",
+        ))
+    except Exception:
+        console.print("[yellow]Configuration not found. Run 'mnemosyne setup' first.[/yellow]")
 
 
 @app.command()
