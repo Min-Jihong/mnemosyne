@@ -5,11 +5,11 @@
 
 site_name: Mnemosyne
 site_description: Your Digital Clone That Learns How You Think
-site_url: https://yourusername.github.io/mnemosyne/
+site_url: https://min-jihong.github.io/mnemosyne/
 site_author: Mnemosyne Team
 
-repo_name: yourusername/mnemosyne
-repo_url: https://github.com/yourusername/mnemosyne
+repo_name: Min-Jihong/mnemosyne
+repo_url: https://github.com/Min-Jihong/mnemosyne
 edit_uri: edit/main/docs/
 
 copyright: Copyright &copy; 2024 Mnemosyne Contributors
@@ -89,7 +89,7 @@ markdown_extensions:
   - pymdownx.keys
   - pymdownx.magiclink:
       repo_url_shorthand: true
-      user: yourusername
+      user: Min-Jihong
       repo: mnemosyne
   - pymdownx.mark
   - pymdownx.smartsymbols
@@ -140,7 +140,7 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/yourusername/mnemosyne
+      link: https://github.com/Min-Jihong/mnemosyne
   generator: false
   analytics:
     provider: google

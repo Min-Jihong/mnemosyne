@@ -2,7 +2,7 @@
 # =============================================================================
 # Mnemosyne Installation Script
 # =============================================================================
-# One-liner: curl -fsSL https://raw.githubusercontent.com/yourusername/mnemosyne/main/install.sh | bash
+# One-liner: curl -fsSL https://raw.githubusercontent.com/Min-Jihong/mnemosyne/main/install.sh | bash
 # =============================================================================
 
 set -e
@@ -90,7 +90,7 @@ if [ -d "$INSTALL_DIR" ]; then
     cd "$INSTALL_DIR"
     git pull --ff-only
 else
-    git clone https://github.com/yourusername/mnemosyne.git "$INSTALL_DIR"
+    git clone https://github.com/Min-Jihong/mnemosyne.git "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 fi
 
@@ -221,7 +221,7 @@ echo -e "    ${ARROW} Start web interface:  ${GREEN}mnemosyne web${NC}"
 echo -e "    ${ARROW} Start recording:      ${GREEN}mnemosyne record${NC}"
 echo ""
 echo -e "  ${CYAN}Documentation:${NC}"
-echo -e "    ${ARROW} https://github.com/yourusername/mnemosyne"
+echo -e "    ${ARROW} https://github.com/Min-Jihong/mnemosyne"
 echo ""
 
 if [ "$USE_VENV" = "true" ]; then

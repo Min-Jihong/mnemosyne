@@ -25,7 +25,7 @@ uv pip install mnemosyne
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/mnemosyne.git
+git clone https://github.com/Min-Jihong/mnemosyne.git
 cd mnemosyne
 pip install -e ".[all]"
 ```

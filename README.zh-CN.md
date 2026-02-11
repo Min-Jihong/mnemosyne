@@ -8,7 +8,9 @@
 
 中文 | [English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md)
 
-[![CI](https://github.com/yourusername/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/mnemosyne/actions/workflows/ci.yml)
+[![CI](https://github.com/Min-Jihong/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/Min-Jihong/mnemosyne/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/Min-Jihong/mnemosyne?style=social)](https://github.com/Min-Jihong/mnemosyne)
+[![GitHub forks](https://img.shields.io/github/forks/Min-Jihong/mnemosyne?style=social)](https://github.com/Min-Jihong/mnemosyne/fork)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://www.apple.com/macos)
@@ -374,7 +376,7 @@ $ mnemosyne aggregate ses_abc123
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/mnemosyne.git
+git clone https://github.com/Min-Jihong/mnemosyne.git
 cd mnemosyne
 
 # 使用pip安装

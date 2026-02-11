@@ -77,5 +77,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Blocked hotkeys (Cmd+Q, etc.)
 - Rate limiting for automated actions
 
-[Unreleased]: https://github.com/yourusername/mnemosyne/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/mnemosyne/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Min-Jihong/mnemosyne/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Min-Jihong/mnemosyne/releases/tag/v0.1.0

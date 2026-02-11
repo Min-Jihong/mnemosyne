@@ -131,4 +131,4 @@ cors_origins = ["http://localhost:3000"]
 
 ## Programmatic Client
 
-See [examples/web_api_client.py](https://github.com/yourusername/mnemosyne/blob/main/examples/web_api_client.py) for a Python client example.
+See [examples/web_api_client.py](https://github.com/Min-Jihong/mnemosyne/blob/main/examples/web_api_client.py) for a Python client example.

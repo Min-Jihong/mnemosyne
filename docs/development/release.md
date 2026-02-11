@@ -54,7 +54,7 @@ git push origin main --tags
 
 ### 5. GitHub Release
 
-1. Go to [Releases](https://github.com/yourusername/mnemosyne/releases)
+1. Go to [Releases](https://github.com/Min-Jihong/mnemosyne/releases)
 2. Click "Draft a new release"
 3. Select the tag
 4. Copy changelog entry to description

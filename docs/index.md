@@ -122,10 +122,10 @@ Use the AI provider you trust:
 
 ## Community
 
-- [GitHub Issues](https://github.com/yourusername/mnemosyne/issues) - Bug reports & feature requests
-- [Discussions](https://github.com/yourusername/mnemosyne/discussions) - Questions & ideas
+- [GitHub Issues](https://github.com/Min-Jihong/mnemosyne/issues) - Bug reports & feature requests
+- [Discussions](https://github.com/Min-Jihong/mnemosyne/discussions) - Questions & ideas
 - [Contributing Guide](contributing.md) - Help improve Mnemosyne
 
 ## License
 
-Mnemosyne is [MIT licensed](https://github.com/yourusername/mnemosyne/blob/main/LICENSE).
+Mnemosyne is [MIT licensed](https://github.com/Min-Jihong/mnemosyne/blob/main/LICENSE).
