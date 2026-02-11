@@ -13,6 +13,7 @@ from mnemosyne.config.schema import (
     CaptureConfig,
     MemoryConfig,
     CuriosityConfig,
+    PrivacyConfig,
 )
 
 
@@ -23,6 +24,7 @@ class Settings(BaseModel):
     capture: CaptureConfig = CaptureConfig()
     memory: MemoryConfig = MemoryConfig()
     curiosity: CuriosityConfig = CuriosityConfig()
+    privacy: PrivacyConfig = PrivacyConfig()
     
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Settings":
@@ -33,6 +35,7 @@ class Settings(BaseModel):
             capture=CaptureConfig(**data.get("capture", {})),
             memory=MemoryConfig(**data.get("memory", {})),
             curiosity=CuriosityConfig(**data.get("curiosity", {})),
+            privacy=PrivacyConfig(**data.get("privacy", {})),
         )
 
 

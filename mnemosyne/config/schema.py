@@ -114,6 +114,26 @@ class CuriosityConfig(BaseModel):
     max_pending_questions: int = 10  # Max questions to queue
 
 
+class ScrubLevel(str, Enum):
+    """Privacy scrubbing intensity levels."""
+    MINIMAL = "minimal"
+    STANDARD = "standard"
+    AGGRESSIVE = "aggressive"
+
+
+class PrivacyConfig(BaseModel):
+    """Privacy scrubbing configuration."""
+    enabled: bool = True
+    level: ScrubLevel = ScrubLevel.STANDARD
+    scrub_text: bool = True
+    scrub_images: bool = True
+    scrub_events: bool = True
+    allow_list: list[str] = Field(default_factory=list)
+    disabled_types: list[str] = Field(default_factory=list)
+    blur_radius: int = Field(default=20, ge=5, le=100)
+    ocr_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 def export_json_schema() -> dict:
     """Export all configuration schemas as JSON Schema for IDE support."""
     from typing import Any
@@ -131,6 +151,7 @@ def export_json_schema() -> dict:
         ("CaptureConfig", CaptureConfig),
         ("MemoryConfig", MemoryConfig),
         ("CuriosityConfig", CuriosityConfig),
+        ("PrivacyConfig", PrivacyConfig),
     ]
 
     for name, model in models:
@@ -142,6 +163,7 @@ def export_json_schema() -> dict:
         "capture": {"$ref": "#/definitions/CaptureConfig"},
         "memory": {"$ref": "#/definitions/MemoryConfig"},
         "curiosity": {"$ref": "#/definitions/CuriosityConfig"},
+        "privacy": {"$ref": "#/definitions/PrivacyConfig"},
     }
 
     return schemas

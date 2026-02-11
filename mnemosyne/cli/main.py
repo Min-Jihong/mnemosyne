@@ -800,5 +800,391 @@ def search(
         console.print(f"     [dim]{r.source_path}[/dim]\n")
 
 
+@app.command()
+def aggregate(
+    session_id: str = typer.Argument(..., help="Session ID to aggregate"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    mouse_window: float = typer.Option(500.0, "--mouse-window", help="Mouse aggregation window (ms)"),
+    scroll_window: float = typer.Option(1000.0, "--scroll-window", help="Scroll aggregation window (ms)"),
+    typing_window: float = typer.Option(2000.0, "--typing-window", help="Typing aggregation window (ms)"),
+    idle_threshold: float = typer.Option(3.0, "--idle-threshold", help="Idle detection threshold (seconds)"),
+    epsilon: float = typer.Option(5.0, "--epsilon", help="Douglas-Peucker epsilon for path simplification"),
+    output: Path = typer.Option(None, "--output", "-o", help="Save result to JSON file"),
+):
+    """Aggregate events in a session to reduce noise."""
+    from mnemosyne.store.database import Database
+    from mnemosyne.aggregation import EventAggregator, AggregationConfig
+    
+    db = Database(data_dir / "mnemosyne.db")
+    
+    session = db.get_session(session_id)
+    if not session:
+        for s in db.list_sessions():
+            if s.id.startswith(session_id):
+                session = s
+                break
+    
+    if not session:
+        console.print(f"[red]Session not found: {session_id}[/red]")
+        raise typer.Exit(1)
+    
+    config = AggregationConfig(
+        mouse_window_ms=mouse_window,
+        scroll_window_ms=scroll_window,
+        typing_window_ms=typing_window,
+        idle_threshold_seconds=idle_threshold,
+        douglas_peucker_epsilon=epsilon,
+    )
+    
+    aggregator = EventAggregator(config=config)
+    events = db.get_events(session.id)
+    
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        task = progress.add_task("Aggregating events...", total=None)
+        result = asyncio.run(aggregator.aggregate_session(events))
+        progress.update(task, completed=True)
+    
+    console.print(Panel(
+        f"[bold]Session:[/bold] {session.name or session.id[:8]}\n"
+        f"[bold]Original Events:[/bold] {result.original_event_count}\n"
+        f"[bold]Aggregated Events:[/bold] {result.aggregated_event_count}\n"
+        f"[bold]Compression:[/bold] {result.compression_ratio:.1%}\n"
+        f"[bold]Processing Time:[/bold] {result.processing_time_ms:.1f}ms\n\n"
+        f"[cyan]Breakdown:[/cyan]\n"
+        f"  Mouse trajectories: {len(result.mouse_trajectories)}\n"
+        f"  Scroll sequences: {len(result.scroll_sequences)}\n"
+        f"  Typing sequences: {len(result.typing_sequences)}\n"
+        f"  Idle periods: {len(result.idle_periods)}",
+        title="📊 Aggregation Result",
+    ))
+    
+    if result.typing_sequences:
+        console.print("\n[cyan]Typing Samples:[/cyan]")
+        for i, ts in enumerate(result.typing_sequences[:3], 1):
+            text_preview = ts.text[:50].replace("\n", "↵") + ("..." if len(ts.text) > 50 else "")
+            console.print(f"  {i}. \"{text_preview}\" ({ts.wpm:.0f} WPM, {ts.char_count} chars)")
+    
+    if result.idle_periods:
+        away_periods = [p for p in result.idle_periods if p.is_away]
+        breaks = [p for p in result.idle_periods if p.is_break]
+        pauses = [p for p in result.idle_periods if p.is_short_pause]
+        console.print(f"\n[cyan]Idle Analysis:[/cyan] {len(pauses)} pauses, {len(breaks)} breaks, {len(away_periods)} away periods")
+    
+    if output:
+        import json
+        with open(output, "w") as f:
+            json.dump(result.to_dict(), f, indent=2)
+        console.print(f"\n[green]Result saved to {output}[/green]")
+
+
+privacy_app = typer.Typer(help="Privacy scrubbing settings and controls")
+app.add_typer(privacy_app, name="privacy")
+
+
+@privacy_app.command("status")
+def privacy_status(
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Show current privacy scrubbing settings."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.privacy import PrivacyScrubber, PrivacyConfig, ScrubLevel
+    
+    try:
+        settings = load_settings()
+        privacy_config = getattr(settings, "privacy", None)
+        if privacy_config is None:
+            privacy_config = PrivacyConfig()
+    except Exception:
+        privacy_config = PrivacyConfig()
+    
+    scrubber = PrivacyScrubber(config=privacy_config)
+    stats = scrubber.get_statistics()
+    
+    status_color = "green" if stats["enabled"] else "red"
+    status_text = "Enabled" if stats["enabled"] else "Disabled"
+    
+    console.print(Panel(
+        f"[bold]Status:[/bold] [{status_color}]{status_text}[/{status_color}]\n"
+        f"[bold]Level:[/bold] {stats['level']}\n"
+        f"[bold]Pattern Count:[/bold] {stats['pattern_count']}\n\n"
+        f"[cyan]Scrubbing Targets:[/cyan]\n"
+        f"  Text: {'✓' if stats['scrub_text'] else '✗'}\n"
+        f"  Images: {'✓' if stats['scrub_images'] else '✗'}\n"
+        f"  Events: {'✓' if stats['scrub_events'] else '✗'}\n\n"
+        f"[cyan]Allow List:[/cyan] {stats['allow_list_count']} entries\n"
+        f"[cyan]Disabled Types:[/cyan] {', '.join(stats['disabled_types']) or 'None'}",
+        title="🔒 Privacy Scrubbing Status",
+    ))
+
+
+@privacy_app.command("enable")
+def privacy_enable(
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Enable privacy scrubbing."""
+    from mnemosyne.config import load_settings, save_settings
+    from mnemosyne.privacy import PrivacyConfig
+    
+    config_path = data_dir / "config.toml"
+    
+    try:
+        settings = load_settings(config_path)
+    except Exception:
+        from mnemosyne.config.settings import Settings
+        settings = Settings()
+    
+    if not hasattr(settings, "privacy"):
+        import toml
+        
+        if config_path.exists():
+            with open(config_path) as f:
+                data = toml.load(f)
+        else:
+            data = {}
+        
+        data["privacy"] = {"enabled": True}
+        
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w") as f:
+            toml.dump(data, f)
+    else:
+        settings.privacy.enabled = True
+        save_settings(settings, config_path)
+    
+    console.print("[green]✓ Privacy scrubbing enabled[/green]")
+
+
+@privacy_app.command("disable")
+def privacy_disable(
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Disable privacy scrubbing."""
+    import toml
+    
+    config_path = data_dir / "config.toml"
+    
+    if config_path.exists():
+        with open(config_path) as f:
+            data = toml.load(f)
+    else:
+        data = {}
+    
+    if "privacy" not in data:
+        data["privacy"] = {}
+    
+    data["privacy"]["enabled"] = False
+    
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        toml.dump(data, f)
+    
+    console.print("[yellow]✗ Privacy scrubbing disabled[/yellow]")
+    console.print("[dim]Warning: PII will not be masked in recordings[/dim]")
+
+
+@privacy_app.command("level")
+def privacy_level(
+    level: str = typer.Argument(..., help="Scrubbing level: minimal, standard, aggressive"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Set the privacy scrubbing level."""
+    import toml
+    from mnemosyne.privacy import ScrubLevel
+    
+    valid_levels = [l.value for l in ScrubLevel]
+    if level not in valid_levels:
+        console.print(f"[red]Invalid level: {level}[/red]")
+        console.print(f"Valid levels: {', '.join(valid_levels)}")
+        raise typer.Exit(1)
+    
+    config_path = data_dir / "config.toml"
+    
+    if config_path.exists():
+        with open(config_path) as f:
+            data = toml.load(f)
+    else:
+        data = {}
+    
+    if "privacy" not in data:
+        data["privacy"] = {"enabled": True}
+    
+    data["privacy"]["level"] = level
+    
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        toml.dump(data, f)
+    
+    level_descriptions = {
+        "minimal": "Only high-risk PII (SSN, credit cards, API keys, passwords)",
+        "standard": "Common PII types with high confidence",
+        "aggressive": "All detectable PII including addresses and dates",
+    }
+    
+    console.print(f"[green]✓ Privacy level set to: {level}[/green]")
+    console.print(f"[dim]{level_descriptions[level]}[/dim]")
+
+
+@privacy_app.command("test")
+def privacy_test(
+    text: str = typer.Argument(..., help="Text to test for PII detection"),
+):
+    """Test PII detection on sample text."""
+    import asyncio
+    from mnemosyne.privacy import PrivacyScrubber, PrivacyConfig, ScrubLevel
+    
+    scrubber = PrivacyScrubber(config=PrivacyConfig(level=ScrubLevel.AGGRESSIVE))
+    
+    scrubbed, result = asyncio.run(scrubber.scrub_text(text))
+    
+    console.print(Panel(
+        f"[bold]Original:[/bold]\n{text}\n\n"
+        f"[bold]Scrubbed:[/bold]\n{scrubbed}",
+        title="🔍 PII Detection Test",
+    ))
+    
+    if result.pii_found:
+        console.print(f"\n[cyan]PII Found ({result.pii_count}):[/cyan]")
+        for pii_type, value in result.pii_found:
+            masked_value = value[:3] + "..." + value[-3:] if len(value) > 8 else "***"
+            console.print(f"  • {pii_type.value}: {masked_value}")
+    else:
+        console.print("\n[green]No PII detected[/green]")
+
+
+@privacy_app.command("scrub-file")
+def privacy_scrub_file(
+    file_path: Path = typer.Argument(..., help="File to scrub (text or image)"),
+    output: Path = typer.Option(None, "--output", "-o", help="Output path"),
+    level: str = typer.Option("standard", "--level", "-l", help="Scrubbing level"),
+):
+    """Scrub PII from a file."""
+    import asyncio
+    from mnemosyne.privacy import PrivacyScrubber, PrivacyConfig, ScrubLevel
+    
+    if not file_path.exists():
+        console.print(f"[red]File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+    
+    try:
+        scrub_level = ScrubLevel(level)
+    except ValueError:
+        console.print(f"[red]Invalid level: {level}[/red]")
+        raise typer.Exit(1)
+    
+    scrubber = PrivacyScrubber(config=PrivacyConfig(level=scrub_level))
+    
+    image_extensions = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+    
+    if file_path.suffix.lower() in image_extensions:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task("Scrubbing image...", total=None)
+            result = asyncio.run(scrubber.scrub_image(file_path))
+            progress.update(task, completed=True)
+        
+        console.print(f"[green]✓ Image scrubbed[/green]")
+        console.print(f"  Regions blurred: {result.regions_blurred}")
+        console.print(f"  Output: {result.scrubbed_path}")
+        
+        if result.pii_types_found:
+            console.print(f"  PII types: {', '.join(t.value for t in result.pii_types_found)}")
+    else:
+        with open(file_path) as f:
+            text = f.read()
+        
+        scrubbed, result = asyncio.run(scrubber.scrub_text(text))
+        
+        output_path = output or file_path.with_suffix(f".scrubbed{file_path.suffix}")
+        with open(output_path, "w") as f:
+            f.write(scrubbed)
+        
+        console.print(f"[green]✓ Text file scrubbed[/green]")
+        console.print(f"  PII instances found: {result.pii_count}")
+        console.print(f"  Output: {output_path}")
+
+
+@app.command()
+def ground(
+    image_path: Path = typer.Argument(..., help="Path to screenshot image"),
+    output: Path = typer.Option(None, "--output", "-o", help="Output path for annotated image"),
+    show_bounds: bool = typer.Option(False, "--bounds", "-b", help="Show bounding boxes"),
+    prompt: bool = typer.Option(False, "--prompt", "-p", help="Generate Set-of-Mark prompt"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output elements as JSON"),
+):
+    """Detect and annotate UI elements in a screenshot (Set-of-Mark style)."""
+    import asyncio
+    import json
+    from mnemosyne.grounding import VisualGrounder, AnnotationStyle
+    
+    if not image_path.exists():
+        console.print(f"[red]Image not found: {image_path}[/red]")
+        raise typer.Exit(1)
+    
+    style = AnnotationStyle(show_bounds=show_bounds)
+    grounder = VisualGrounder(annotation_style=style)
+    
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        task = progress.add_task("Detecting UI elements...", total=None)
+        result = asyncio.run(grounder.ground_image(image_path, output))
+        progress.update(task, completed=True)
+    
+    if json_output:
+        elements_data = [
+            {
+                "id": e.id,
+                "type": e.element_type.value,
+                "x": e.bounds.x,
+                "y": e.bounds.y,
+                "width": e.bounds.width,
+                "height": e.bounds.height,
+                "center": e.center,
+                "confidence": e.confidence,
+                "interactive": e.is_interactive,
+            }
+            for e in result.elements
+        ]
+        console.print(json.dumps(elements_data, indent=2))
+        return
+    
+    if prompt:
+        som_prompt = asyncio.run(grounder.generate_som_prompt(image_path, result.elements))
+        console.print(Panel(som_prompt, title="Set-of-Mark Prompt"))
+        return
+    
+    interactive = [e for e in result.elements if e.is_interactive]
+    non_interactive = [e for e in result.elements if not e.is_interactive]
+    
+    console.print(Panel(
+        f"[bold]Source:[/bold] {result.source_path}\n"
+        f"[bold]Size:[/bold] {result.image_width}x{result.image_height}\n"
+        f"[bold]Elements:[/bold] {result.element_count} ({len(interactive)} interactive)\n"
+        f"[bold]Processing:[/bold] {result.processing_time_ms:.1f}ms\n"
+        f"[bold]Output:[/bold] {result.annotated_path}",
+        title="🎯 Visual Grounding Result",
+    ))
+    
+    if interactive:
+        table = Table(title="Interactive Elements")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type")
+        table.add_column("Position")
+        table.add_column("Size")
+        table.add_column("Confidence")
+        
+        for e in interactive:
+            cx, cy = e.center
+            conf_color = "green" if e.confidence >= 0.7 else "yellow" if e.confidence >= 0.5 else "red"
+            table.add_row(
+                str(e.id),
+                e.element_type.value,
+                f"({cx}, {cy})",
+                f"{e.bounds.width}x{e.bounds.height}",
+                f"[{conf_color}]{e.confidence:.0%}[/{conf_color}]",
+            )
+        
+        console.print(table)
+    
+    console.print(f"\n[dim]Annotated image saved to: {result.annotated_path}[/dim]")
+
+
 if __name__ == "__main__":
     app()

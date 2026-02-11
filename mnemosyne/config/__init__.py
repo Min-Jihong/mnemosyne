@@ -8,6 +8,8 @@ from mnemosyne.config.schema import (
     MemoryConfig,
     CuriosityConfig,
     CuriosityMode,
+    PrivacyConfig,
+    ScrubLevel,
 )
 
 __all__ = [
@@ -19,4 +21,6 @@ __all__ = [
     "MemoryConfig",
     "CuriosityConfig",
     "CuriosityMode",
+    "PrivacyConfig",
+    "ScrubLevel",
 ]
