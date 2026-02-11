@@ -544,5 +544,261 @@ def version():
     console.print(f"[bold]Mnemosyne[/bold] v{__version__}")
 
 
+@app.command()
+def summary(
+    period: str = typer.Argument("today", help="Period: today, yesterday, week"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    format: str = typer.Option("text", "--format", "-f", help="Output format: text, json, html, markdown"),
+    output: Path = typer.Option(None, "--output", "-o", help="Save report to file"),
+):
+    """Generate AI-powered activity summary."""
+    from datetime import datetime, timedelta
+    from mnemosyne.config import load_settings
+    from mnemosyne.store.database import Database
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.analytics.summary import SummaryGenerator
+    from mnemosyne.analytics.reports import ReportGenerator, ReportFormat
+    
+    settings = load_settings()
+    db = Database(data_dir / "mnemosyne.db")
+    llm = create_llm_provider(settings.llm)
+    
+    generator = SummaryGenerator(llm=llm, database=db)
+    reporter = ReportGenerator(output_dir=data_dir / "reports")
+    
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        task = progress.add_task("Generating summary...", total=None)
+        
+        if period == "week":
+            result = asyncio.run(generator.generate_weekly_summary())
+            report_name = f"weekly-{result.end_date.strftime('%Y-%m-%d')}"
+        else:
+            date = datetime.now()
+            if period == "yesterday":
+                date = date - timedelta(days=1)
+            result = asyncio.run(generator.generate_daily_summary(date))
+            report_name = f"daily-{result.date.strftime('%Y-%m-%d')}"
+        
+        progress.update(task, completed=True)
+    
+    fmt = ReportFormat(format) if format in ["json", "html", "markdown"] else None
+    
+    if fmt:
+        if hasattr(result, 'daily_summaries'):
+            content = reporter.generate_weekly_report(result, fmt)
+        else:
+            content = reporter.generate_daily_report(result, fmt)
+        
+        if output:
+            with open(output, "w") as f:
+                f.write(content)
+            console.print(f"[green]Report saved to {output}[/green]")
+        else:
+            console.print(content)
+    else:
+        if hasattr(result, 'daily_summaries'):
+            console.print(Panel(
+                f"[bold]{result.headline}[/bold]\n\n"
+                f"Period: {result.start_date.strftime('%b %d')} - {result.end_date.strftime('%b %d, %Y')}\n"
+                f"Total Hours: {result.total_hours:.1f}h\n"
+                f"Avg Productivity: {result.average_productivity:.0f}%\n\n"
+                f"[cyan]Insights:[/cyan]\n" + "\n".join(f"  • {i}" for i in result.weekly_insights[:3]),
+                title="📊 Weekly Summary",
+            ))
+        else:
+            console.print(Panel(
+                f"[bold]{result.headline}[/bold]\n\n"
+                f"Date: {result.date.strftime('%A, %B %d, %Y')}\n"
+                f"Active Time: {result.total_hours:.1f}h\n"
+                f"Productivity: {result.productivity_score:.0f}%\n\n"
+                f"[cyan]Top Apps:[/cyan] {', '.join(result.top_apps[:3])}\n\n"
+                f"[cyan]Highlights:[/cyan]\n" + "\n".join(f"  • {h}" for h in result.highlights[:3]),
+                title="📊 Daily Summary",
+            ))
+
+
+@app.command()
+def stats(
+    period: str = typer.Argument("today", help="Period: today, yesterday, week"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Show work statistics and productivity metrics."""
+    from datetime import datetime, timedelta
+    from mnemosyne.store.database import Database
+    from mnemosyne.analytics.statistics import StatisticsCalculator
+    
+    db = Database(data_dir / "mnemosyne.db")
+    calculator = StatisticsCalculator(db)
+    
+    if period == "week":
+        stats_list = calculator.calculate_weekly_stats()
+        
+        table = Table(title="📊 Weekly Statistics")
+        table.add_column("Day", style="cyan")
+        table.add_column("Hours")
+        table.add_column("Productivity")
+        table.add_column("Top App")
+        table.add_column("Events")
+        
+        for s in stats_list:
+            score_color = "green" if s.productivity.score >= 70 else "yellow" if s.productivity.score >= 40 else "red"
+            table.add_row(
+                s.date.strftime("%a %m/%d"),
+                f"{s.total_active_hours:.1f}h",
+                f"[{score_color}]{s.productivity.score:.0f}%[/{score_color}]",
+                s.top_apps[0] if s.top_apps else "-",
+                str(s.event_count),
+            )
+        
+        console.print(table)
+        
+        total_hours = sum(s.total_active_hours for s in stats_list)
+        avg_productivity = sum(s.productivity.score for s in stats_list) / len(stats_list) if stats_list else 0
+        console.print(f"\n[bold]Total:[/bold] {total_hours:.1f}h | [bold]Avg Productivity:[/bold] {avg_productivity:.0f}%")
+    else:
+        date = datetime.now()
+        if period == "yesterday":
+            date = date - timedelta(days=1)
+        
+        s = calculator.calculate_daily_stats(date)
+        
+        console.print(Panel(
+            f"[bold]Date:[/bold] {s.date.strftime('%A, %B %d, %Y')}\n"
+            f"[bold]Active Time:[/bold] {s.total_active_hours:.1f} hours\n"
+            f"[bold]Events:[/bold] {s.event_count} | [bold]Screenshots:[/bold] {s.screenshot_count}\n\n"
+            f"[cyan]Productivity Score:[/cyan] {s.productivity.score:.0f}/100\n"
+            f"  Productive: {s.productivity.productive_seconds/3600:.1f}h\n"
+            f"  Neutral: {s.productivity.neutral_seconds/3600:.1f}h\n"
+            f"  Distracting: {s.productivity.distracting_seconds/3600:.1f}h\n\n"
+            f"[cyan]Peak Hours:[/cyan] {', '.join(f'{h}:00' for h in s.peak_hours) if s.peak_hours else 'N/A'}",
+            title="📊 Daily Statistics",
+        ))
+        
+        if s.app_usage:
+            table = Table(title="App Usage")
+            table.add_column("App", style="cyan")
+            table.add_column("Time")
+            table.add_column("Category")
+            
+            for app in sorted(s.app_usage, key=lambda x: x.total_seconds, reverse=True)[:10]:
+                cat_color = "green" if app.category == "productive" else "red" if app.category == "distracting" else "white"
+                table.add_row(
+                    app.app_name[:30],
+                    f"{app.total_minutes:.0f} min",
+                    f"[{cat_color}]{app.category}[/{cat_color}]",
+                )
+            
+            console.print(table)
+
+
+@app.command()
+def replay(
+    session_id: str = typer.Argument(..., help="Session ID to replay"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    speed: str = typer.Option("normal", "--speed", "-s", help="Speed: slow, normal, fast, instant"),
+    no_confirm: bool = typer.Option(False, "--no-confirm", help="Skip action confirmations"),
+    preview: bool = typer.Option(False, "--preview", "-p", help="Preview only, don't execute"),
+):
+    """Replay a recorded session."""
+    from mnemosyne.store.database import Database
+    from mnemosyne.replay import ActionReplayer, ReplayConfig, ReplaySpeed
+    
+    db = Database(data_dir / "mnemosyne.db")
+    
+    session = db.get_session(session_id)
+    if not session:
+        for s in db.list_sessions():
+            if s.id.startswith(session_id):
+                session = s
+                break
+    
+    if not session:
+        console.print(f"[red]Session not found: {session_id}[/red]")
+        raise typer.Exit(1)
+    
+    speed_map = {
+        "slow": ReplaySpeed.SLOW,
+        "normal": ReplaySpeed.NORMAL,
+        "fast": ReplaySpeed.FAST,
+        "instant": ReplaySpeed.INSTANT,
+    }
+    
+    config = ReplayConfig(
+        speed=speed_map.get(speed, ReplaySpeed.NORMAL),
+        require_confirmation=not no_confirm,
+    )
+    
+    replayer = ActionReplayer(
+        database=db,
+        config=config,
+        on_action=lambda e, i, t: console.print(f"  [{i+1}/{t}] {e.action_type}"),
+        on_complete=lambda s: console.print(f"\n[green]Replay completed![/green]"),
+    )
+    
+    info = replayer.get_session_preview(session.id)
+    
+    console.print(Panel(
+        f"[bold]Session:[/bold] {session.name or session.id[:8]}\n"
+        f"[bold]Total Events:[/bold] {info['total_events']}\n"
+        f"[bold]Replayable:[/bold] {info['replayable_events']}\n"
+        f"[bold]Original Duration:[/bold] {info['original_duration_seconds']:.1f}s\n"
+        f"[bold]Estimated Replay:[/bold] {info['estimated_replay_seconds']:.1f}s\n\n"
+        f"[cyan]Actions:[/cyan]\n" + "\n".join(f"  • {k}: {v}" for k, v in info['action_breakdown'].items()),
+        title="🎬 Replay Preview",
+    ))
+    
+    if preview:
+        return
+    
+    if not no_confirm:
+        confirm = typer.confirm("Start replay?")
+        if not confirm:
+            return
+    
+    console.print("\n[yellow]Starting replay...[/yellow]\n")
+    asyncio.run(replayer.replay_session(session.id))
+
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Text to search for"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    limit: int = typer.Option(10, "--limit", "-l", help="Max results"),
+    index: bool = typer.Option(False, "--index", "-i", help="Re-index screenshots first"),
+):
+    """Search text in screenshots using OCR."""
+    from mnemosyne.ocr import ScreenshotIndexer
+    
+    indexer = ScreenshotIndexer(data_dir=data_dir)
+    
+    if index:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task("Indexing screenshots...", total=None)
+            count = indexer.index_all()
+            progress.update(task, completed=True)
+        console.print(f"[green]Indexed {count} screenshots[/green]\n")
+    
+    results = indexer.search(query, limit=limit)
+    
+    if not results:
+        console.print(f"[yellow]No results found for '{query}'[/yellow]")
+        console.print("[dim]Tip: Run with --index to index new screenshots[/dim]")
+        return
+    
+    console.print(f"[green]Found {len(results)} results for '{query}':[/green]\n")
+    
+    for i, r in enumerate(results, 1):
+        from datetime import datetime
+        time_str = datetime.fromtimestamp(r.timestamp).strftime("%Y-%m-%d %H:%M") if r.timestamp else "Unknown"
+        snippet = r.text[:100].replace("\n", " ")
+        if query.lower() in snippet.lower():
+            idx = snippet.lower().index(query.lower())
+            snippet = snippet[:idx] + f"[bold yellow]{snippet[idx:idx+len(query)]}[/bold yellow]" + snippet[idx+len(query):]
+        
+        console.print(f"  {i}. [cyan]{time_str}[/cyan]")
+        console.print(f"     {snippet}...")
+        console.print(f"     [dim]{r.source_path}[/dim]\n")
+
+
 if __name__ == "__main__":
     app()
