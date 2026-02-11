@@ -338,6 +338,110 @@ def execute(
     ))
 
 
+@app.command("do")
+def do_goal(
+    goal: str = typer.Argument(..., help="Goal to execute (e.g., 'open Chrome')"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    confirm: bool = typer.Option(False, "--confirm", "-c", help="Require confirmation before each action"),
+    no_learn: bool = typer.Option(False, "--no-learn", help="Don't learn patterns from this execution"),
+    max_steps: int = typer.Option(50, "--max-steps", "-m", help="Maximum steps to execute"),
+):
+    """Smart goal execution with pattern matching and LLM planning.
+    
+    This command uses the SmartExecutor which:
+    1. Checks for learned patterns from past executions
+    2. Uses LLM to plan actions if no pattern found
+    3. Executes with visual feedback and verification
+    4. Learns new patterns from successful executions
+    
+    Examples:
+        mnemosyne do "open Chrome"
+        mnemosyne do "search for weather" --confirm
+        mnemosyne do "type hello in terminal" --no-learn
+    """
+    from mnemosyne.config import load_settings
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.memory.persistent import PersistentMemory
+    from mnemosyne.execute.smart import SmartExecutor, SmartExecutorConfig
+    from mnemosyne.execute.safety import SafetyConfig
+    
+    settings = load_settings()
+    llm = create_llm_provider(settings.llm)
+    mem = PersistentMemory(data_dir=data_dir / "memory")
+    
+    config = SmartExecutorConfig(
+        max_steps=max_steps,
+        require_confirmation=confirm,
+        learn_patterns=not no_learn,
+    )
+    
+    safety_config = SafetyConfig(
+        enabled=True,
+        require_confirmation=confirm,
+    )
+    
+    step_count = 0
+    
+    def on_status(message: str) -> None:
+        console.print(f"  [dim]{message}[/dim]")
+    
+    def on_action(action, step_result) -> None:
+        nonlocal step_count
+        step_count += 1
+        status = "[green]✓[/green]" if step_result.success else "[red]✗[/red]"
+        action_desc = action.description or action.type.value
+        console.print(f"  {status} [{step_count}] {action_desc}")
+    
+    executor = SmartExecutor(
+        llm=llm,
+        memory=mem,
+        data_dir=data_dir,
+        config=config,
+        safety_config=safety_config,
+        on_action=on_action,
+        on_status=on_status,
+    )
+    
+    console.print(Panel(
+        f"[bold]Goal:[/bold] {goal}\n"
+        f"[bold]Max Steps:[/bold] {max_steps}\n"
+        f"[bold]Confirmation:[/bold] {'Required' if confirm else 'Auto'}\n"
+        f"[bold]Learning:[/bold] {'Disabled' if no_learn else 'Enabled'}",
+        title="🤖 Smart Executor",
+    ))
+    
+    console.print("\n[yellow]Executing...[/yellow]\n")
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Analyzing screen...", total=None)
+        result = asyncio.run(executor.execute(goal))
+    
+    # Show result
+    status_color = "green" if result.success else "red"
+    status_text = "Completed" if result.success else "Failed"
+    
+    summary_lines = [
+        f"[bold]Status:[/bold] [{status_color}]{status_text}[/{status_color}]",
+        f"[bold]Steps:[/bold] {result.successful_steps}/{result.step_count}",
+        f"[bold]Duration:[/bold] {result.total_duration_ms:.0f}ms",
+    ]
+    
+    if result.pattern_used:
+        summary_lines.append(f"[bold]Pattern:[/bold] Used existing pattern")
+    elif result.pattern_learned:
+        summary_lines.append(f"[bold]Pattern:[/bold] [green]New pattern learned![/green]")
+    
+    if result.error:
+        summary_lines.append(f"[bold]Error:[/bold] {result.error}")
+    
+    console.print(Panel("\n".join(summary_lines), title="📊 Execution Result"))
+
+
 @app.command()
 def tui(
     port: int = typer.Option(8000, "--port", "-p", help="Web server port"),
