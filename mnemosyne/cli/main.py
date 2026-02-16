@@ -25,6 +25,7 @@ DEFAULT_DATA_DIR = Path.home() / ".mnemosyne"
 def setup():
     """Interactive setup wizard for Mnemosyne."""
     from mnemosyne.cli.setup import run_setup
+
     run_setup()
 
 
@@ -36,41 +37,46 @@ def record(
     """Start recording your computer activity."""
     from mnemosyne.store.session_manager import SessionManager
     from mnemosyne.capture.recorder import RecorderConfig
-    
+
     config = RecorderConfig(output_dir=data_dir / "screenshots")
     manager = SessionManager(data_dir=data_dir, recorder_config=config)
-    
+
     session = manager.start_session(name=name)
-    
-    console.print(Panel(
-        f"[bold green]Recording started![/bold green]\n\n"
-        f"Session ID: [cyan]{session.id}[/cyan]\n"
-        f"Name: {session.name}\n\n"
-        "Press [bold]Ctrl+C[/bold] to stop recording.",
-        title="Mnemosyne Recorder",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold green]Recording started![/bold green]\n\n"
+            f"Session ID: [cyan]{session.id}[/cyan]\n"
+            f"Name: {session.name}\n\n"
+            "Press [bold]Ctrl+C[/bold] to stop recording.",
+            title="Mnemosyne Recorder",
+        )
+    )
+
     def signal_handler(sig, frame):
         console.print("\n[yellow]Stopping recording...[/yellow]")
         final_session = manager.stop_session()
         if final_session:
-            console.print(Panel(
-                f"[bold]Session completed![/bold]\n\n"
-                f"Duration: {final_session.duration_seconds:.1f}s\n"
-                f"Events: {final_session.event_count}\n"
-                f"Screenshots: {final_session.screenshot_count}",
-                title="Recording Summary",
-            ))
+            console.print(
+                Panel(
+                    f"[bold]Session completed![/bold]\n\n"
+                    f"Duration: {final_session.duration_seconds:.1f}s\n"
+                    f"Events: {final_session.event_count}\n"
+                    f"Screenshots: {final_session.screenshot_count}",
+                    title="Recording Summary",
+                )
+            )
         sys.exit(0)
-    
+
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     try:
         while True:
             signal.pause()
     except AttributeError:
         import time
+
         while True:
             time.sleep(1)
 
@@ -82,21 +88,21 @@ def sessions(
 ):
     """List recorded sessions."""
     from mnemosyne.store.database import Database
-    
+
     db = Database(data_dir / "mnemosyne.db")
     session_list = db.list_sessions(limit=limit)
-    
+
     if not session_list:
         console.print("[yellow]No sessions found.[/yellow]")
         return
-    
+
     table = Table(title="Recording Sessions")
     table.add_column("ID", style="cyan")
     table.add_column("Name")
     table.add_column("Duration")
     table.add_column("Events")
     table.add_column("Screenshots")
-    
+
     for s in session_list:
         duration = f"{s.duration_seconds:.1f}s" if s.ended_at else "Running"
         table.add_row(
@@ -106,7 +112,7 @@ def sessions(
             str(s.event_count),
             str(s.screenshot_count),
         )
-    
+
     console.print(table)
 
 
@@ -121,40 +127,40 @@ def analyze(
     from mnemosyne.store.database import Database
     from mnemosyne.llm.factory import create_llm_provider
     from mnemosyne.reason.intent import IntentInferrer
-    
+
     settings = load_settings()
     db = Database(data_dir / "mnemosyne.db")
-    
+
     session = db.get_session(session_id)
     if not session:
         for s in db.list_sessions():
             if s.id.startswith(session_id):
                 session = s
                 break
-    
+
     if not session:
         console.print(f"[red]Session not found: {session_id}[/red]")
         raise typer.Exit(1)
-    
+
     llm = create_llm_provider(settings.llm)
     inferrer = IntentInferrer(llm=llm, database=db)
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
         task = progress.add_task("Analyzing events...", total=None)
-        
+
         async def run_analysis():
             return await inferrer.batch_infer(
                 session_id=session.id,
                 batch_size=batch_size,
             )
-        
+
         count = asyncio.run(run_analysis())
         progress.update(task, completed=True)
-    
+
     console.print(f"[green]Analyzed {count} events.[/green]")
 
 
@@ -169,41 +175,44 @@ def curious(
     from mnemosyne.llm.factory import create_llm_provider
     from mnemosyne.reason.curious import CuriousLLM
     from mnemosyne.store.models import StoredEvent
-    
+
     settings = load_settings()
     db = Database(data_dir / "mnemosyne.db")
-    
+
     session = db.get_session(session_id)
     if not session:
         for s in db.list_sessions():
             if s.id.startswith(session_id):
                 session = s
                 break
-    
+
     if not session:
         console.print(f"[red]Session not found: {session_id}[/red]")
         raise typer.Exit(1)
-    
+
     llm = create_llm_provider(settings.llm)
     curious_llm = CuriousLLM(llm=llm, database=db)
-    
+
     events = db.get_events(session.id, limit=100)
-    
-    console.print(Panel(
-        f"[bold]Exploring session:[/bold] {session.name or session.id}\n"
-        f"Events: {len(events)}",
-        title="Curious LLM",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold]Exploring session:[/bold] {session.name or session.id}\nEvents: {len(events)}",
+            title="Curious LLM",
+        )
+    )
+
     async def run_curiosity():
         return await curious_llm.observe_and_wonder(events)
-    
+
     curiosities = asyncio.run(run_curiosity())
-    
+
     if curiosities:
         console.print("\n[bold cyan]Questions generated:[/bold cyan]\n")
         for i, c in enumerate(curiosities, 1):
-            importance_color = "green" if c.importance > 0.7 else "yellow" if c.importance > 0.4 else "white"
+            importance_color = (
+                "green" if c.importance > 0.7 else "yellow" if c.importance > 0.4 else "white"
+            )
             console.print(f"  {i}. [{importance_color}]{c.question}[/{importance_color}]")
             console.print(f"     Category: {c.category} | Importance: {c.importance:.2f}")
             console.print()
@@ -220,26 +229,26 @@ def memory(
 ):
     """Search or browse persistent memory."""
     from mnemosyne.memory.persistent import PersistentMemory
-    
+
     mem = PersistentMemory(data_dir=data_dir / "memory")
-    
+
     if recent or not query:
         memories = mem.get_recent(n=limit)
         title = "Recent Memories"
     else:
         memories = mem.recall(query=query, n_results=limit)
         title = f"Memories matching '{query}'"
-    
+
     if not memories:
         console.print("[yellow]No memories found.[/yellow]")
         return
-    
+
     table = Table(title=title)
     table.add_column("Type", style="cyan")
     table.add_column("Content")
     table.add_column("Importance")
     table.add_column("Accessed")
-    
+
     for m in memories:
         content = m.content[:50] + "..." if len(m.content) > 50 else m.content
         table.add_row(
@@ -248,7 +257,7 @@ def memory(
             f"{m.importance:.2f}",
             str(m.access_count),
         )
-    
+
     console.print(table)
     console.print(f"\n[dim]Total memories: {mem.count()}[/dim]")
 
@@ -262,23 +271,25 @@ def export(
     """Export session data for training."""
     from mnemosyne.store.database import Database
     from mnemosyne.learn.dataset import BehaviorDataset
-    
+
     db = Database(data_dir / "mnemosyne.db")
     dataset = BehaviorDataset(database=db)
-    
+
     output.mkdir(parents=True, exist_ok=True)
     output_file = output / f"{session_id}.jsonl"
-    
+
     count = dataset.export_to_jsonl(session_id, output_file)
     stats = dataset.get_statistics(session_id)
-    
-    console.print(Panel(
-        f"[bold green]Export complete![/bold green]\n\n"
-        f"File: {output_file}\n"
-        f"Events: {count}\n"
-        f"Intent coverage: {stats['intent_coverage']:.1%}",
-        title="Export Summary",
-    ))
+
+    console.print(
+        Panel(
+            f"[bold green]Export complete![/bold green]\n\n"
+            f"File: {output_file}\n"
+            f"Events: {count}\n"
+            f"Intent coverage: {stats['intent_coverage']:.1%}",
+            title="Export Summary",
+        )
+    )
 
 
 @app.command()
@@ -294,16 +305,16 @@ def execute(
     from mnemosyne.memory.persistent import PersistentMemory
     from mnemosyne.execute.agent import ExecutionAgent
     from mnemosyne.execute.safety import SafetyConfig
-    
+
     settings = load_settings()
     llm = create_llm_provider(settings.llm)
     mem = PersistentMemory(data_dir=data_dir / "memory")
-    
+
     safety_config = SafetyConfig(
         enabled=True,
         require_confirmation=confirm,
     )
-    
+
     agent = ExecutionAgent(
         llm=llm,
         memory=mem,
@@ -311,16 +322,18 @@ def execute(
         on_action=lambda t, d: console.print(f"  [cyan]Action:[/cyan] {t}"),
         on_error=lambda e: console.print(f"  [red]Error:[/red] {e}"),
     )
-    
-    console.print(Panel(
-        f"[bold]Goal:[/bold] {goal}\n"
-        f"[bold]Max steps:[/bold] {max_steps}\n"
-        f"[bold]Confirmation:[/bold] {'Required' if confirm else 'Not required'}",
-        title="Execution Agent",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold]Goal:[/bold] {goal}\n"
+            f"[bold]Max steps:[/bold] {max_steps}\n"
+            f"[bold]Confirmation:[/bold] {'Required' if confirm else 'Not required'}",
+            title="Execution Agent",
+        )
+    )
+
     console.print("\n[yellow]Starting execution...[/yellow]\n")
-    
+
     result = asyncio.run(
         agent.execute_goal(
             goal=goal,
@@ -328,32 +341,38 @@ def execute(
             require_confirmation=confirm,
         )
     )
-    
+
     status = "[green]Success[/green]" if result["completed"] else "[red]Failed[/red]"
-    console.print(Panel(
-        f"[bold]Status:[/bold] {status}\n"
-        f"[bold]Actions taken:[/bold] {result['actions_taken']}\n"
-        f"[bold]Errors:[/bold] {len(result['errors'])}",
-        title="Execution Result",
-    ))
+    console.print(
+        Panel(
+            f"[bold]Status:[/bold] {status}\n"
+            f"[bold]Actions taken:[/bold] {result['actions_taken']}\n"
+            f"[bold]Errors:[/bold] {len(result['errors'])}",
+            title="Execution Result",
+        )
+    )
 
 
 @app.command("do")
 def do_goal(
     goal: str = typer.Argument(..., help="Goal to execute (e.g., 'open Chrome')"),
     data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
-    confirm: bool = typer.Option(False, "--confirm", "-c", help="Require confirmation before each action"),
-    no_learn: bool = typer.Option(False, "--no-learn", help="Don't learn patterns from this execution"),
+    confirm: bool = typer.Option(
+        False, "--confirm", "-c", help="Require confirmation before each action"
+    ),
+    no_learn: bool = typer.Option(
+        False, "--no-learn", help="Don't learn patterns from this execution"
+    ),
     max_steps: int = typer.Option(50, "--max-steps", "-m", help="Maximum steps to execute"),
 ):
     """Smart goal execution with pattern matching and LLM planning.
-    
+
     This command uses the SmartExecutor which:
     1. Checks for learned patterns from past executions
     2. Uses LLM to plan actions if no pattern found
     3. Executes with visual feedback and verification
     4. Learns new patterns from successful executions
-    
+
     Examples:
         mnemosyne do "open Chrome"
         mnemosyne do "search for weather" --confirm
@@ -364,34 +383,34 @@ def do_goal(
     from mnemosyne.memory.persistent import PersistentMemory
     from mnemosyne.execute.smart import SmartExecutor, SmartExecutorConfig
     from mnemosyne.execute.safety import SafetyConfig
-    
+
     settings = load_settings()
     llm = create_llm_provider(settings.llm)
     mem = PersistentMemory(data_dir=data_dir / "memory")
-    
+
     config = SmartExecutorConfig(
         max_steps=max_steps,
         require_confirmation=confirm,
         learn_patterns=not no_learn,
     )
-    
+
     safety_config = SafetyConfig(
         enabled=True,
         require_confirmation=confirm,
     )
-    
+
     step_count = 0
-    
+
     def on_status(message: str) -> None:
         console.print(f"  [dim]{message}[/dim]")
-    
+
     def on_action(action, step_result) -> None:
         nonlocal step_count
         step_count += 1
         status = "[green]✓[/green]" if step_result.success else "[red]✗[/red]"
         action_desc = action.description or action.type.value
         console.print(f"  {status} [{step_count}] {action_desc}")
-    
+
     executor = SmartExecutor(
         llm=llm,
         memory=mem,
@@ -401,17 +420,19 @@ def do_goal(
         on_action=on_action,
         on_status=on_status,
     )
-    
-    console.print(Panel(
-        f"[bold]Goal:[/bold] {goal}\n"
-        f"[bold]Max Steps:[/bold] {max_steps}\n"
-        f"[bold]Confirmation:[/bold] {'Required' if confirm else 'Auto'}\n"
-        f"[bold]Learning:[/bold] {'Disabled' if no_learn else 'Enabled'}",
-        title="🤖 Smart Executor",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold]Goal:[/bold] {goal}\n"
+            f"[bold]Max Steps:[/bold] {max_steps}\n"
+            f"[bold]Confirmation:[/bold] {'Required' if confirm else 'Auto'}\n"
+            f"[bold]Learning:[/bold] {'Disabled' if no_learn else 'Enabled'}",
+            title="🤖 Smart Executor",
+        )
+    )
+
     console.print("\n[yellow]Executing...[/yellow]\n")
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -420,25 +441,25 @@ def do_goal(
     ) as progress:
         task = progress.add_task("Analyzing screen...", total=None)
         result = asyncio.run(executor.execute(goal))
-    
+
     # Show result
     status_color = "green" if result.success else "red"
     status_text = "Completed" if result.success else "Failed"
-    
+
     summary_lines = [
         f"[bold]Status:[/bold] [{status_color}]{status_text}[/{status_color}]",
         f"[bold]Steps:[/bold] {result.successful_steps}/{result.step_count}",
         f"[bold]Duration:[/bold] {result.total_duration_ms:.0f}ms",
     ]
-    
+
     if result.pattern_used:
         summary_lines.append(f"[bold]Pattern:[/bold] Used existing pattern")
     elif result.pattern_learned:
         summary_lines.append(f"[bold]Pattern:[/bold] [green]New pattern learned![/green]")
-    
+
     if result.error:
         summary_lines.append(f"[bold]Error:[/bold] {result.error}")
-    
+
     console.print(Panel("\n".join(summary_lines), title="📊 Execution Result"))
 
 
@@ -451,7 +472,7 @@ def tui(
     import threading
     import webbrowser
     import time
-    
+
     try:
         import textual
     except ImportError:
@@ -459,13 +480,13 @@ def tui(
         console.print("Install with: [cyan]pip install textual[/cyan]")
         console.print("Or install all TUI deps: [cyan]pip install 'mnemosyne[tui]'[/cyan]")
         raise typer.Exit(1)
-    
+
     try:
         from mnemosyne.tui.app import run_tui
     except ImportError as e:
         console.print(f"[red]Failed to load TUI: {e}[/red]")
         raise typer.Exit(1)
-    
+
     try:
         import uvicorn
     except ImportError:
@@ -473,7 +494,7 @@ def tui(
         console.print("Install with: [cyan]pip install 'mnemosyne[web]'[/cyan]")
         run_tui()
         return
-    
+
     def run_web_server():
         config = uvicorn.Config(
             "mnemosyne.web.app:app",
@@ -483,23 +504,25 @@ def tui(
         )
         server = uvicorn.Server(config)
         server.run()
-    
+
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
-    
+
     time.sleep(1.5)
-    
+
     if not no_browser:
         webbrowser.open(f"http://localhost:{port}")
-    
-    console.print(Panel(
-        f"[bold green]Mnemosyne Started[/bold green]\n\n"
-        f"Web UI: [cyan]http://localhost:{port}[/cyan]\n"
-        f"TUI: Running in terminal\n\n"
-        "Press [bold]q[/bold] in TUI or [bold]Ctrl+C[/bold] to exit.",
-        title="🧠 Mnemosyne",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold green]Mnemosyne Started[/bold green]\n\n"
+            f"Web UI: [cyan]http://localhost:{port}[/cyan]\n"
+            f"TUI: Running in terminal\n\n"
+            "Press [bold]q[/bold] in TUI or [bold]Ctrl+C[/bold] to exit.",
+            title="🧠 Mnemosyne",
+        )
+    )
+
     run_tui()
 
 
@@ -516,19 +539,21 @@ def web(
         console.print("[red]Web dependencies not installed.[/red]")
         console.print("Install with: pip install 'mnemosyne[web]'")
         raise typer.Exit(1)
-    
-    console.print(Panel(
-        f"[bold green]Starting Mnemosyne Web UI[/bold green]\n\n"
-        f"Open [cyan]http://localhost:{port}[/cyan] in your browser\n\n"
-        f"Features:\n"
-        f"  • Chat with your digital twin\n"
-        f"  • Configure LLM API keys\n"
-        f"  • Control recording sessions\n"
-        f"  • Search memories\n\n"
-        "Press [bold]Ctrl+C[/bold] to stop.",
-        title="🧠 Mnemosyne",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold green]Starting Mnemosyne Web UI[/bold green]\n\n"
+            f"Open [cyan]http://localhost:{port}[/cyan] in your browser\n\n"
+            f"Features:\n"
+            f"  • Chat with your digital twin\n"
+            f"  • Configure LLM API keys\n"
+            f"  • Control recording sessions\n"
+            f"  • Search memories\n\n"
+            "Press [bold]Ctrl+C[/bold] to stop.",
+            title="🧠 Mnemosyne",
+        )
+    )
+
     run_server(host=host, port=port, reload=reload)
 
 
@@ -536,15 +561,17 @@ def web(
 def status():
     """Show current status and configuration."""
     from mnemosyne.config import load_settings
-    
+
     try:
         settings = load_settings()
-        console.print(Panel(
-            f"[bold]LLM Provider:[/bold] {settings.llm.provider.value}\n"
-            f"[bold]Model:[/bold] {settings.llm.model}\n"
-            f"[bold]Curiosity Mode:[/bold] {settings.curiosity.mode.value}",
-            title="Mnemosyne Status",
-        ))
+        console.print(
+            Panel(
+                f"[bold]LLM Provider:[/bold] {settings.llm.provider.value}\n"
+                f"[bold]Model:[/bold] {settings.llm.model}\n"
+                f"[bold]Curiosity Mode:[/bold] {settings.curiosity.mode.value}",
+                title="Mnemosyne Status",
+            )
+        )
     except Exception:
         console.print("[yellow]Configuration not found. Run 'mnemosyne setup' first.[/yellow]")
 
@@ -554,91 +581,110 @@ def doctor():
     """Diagnose installation and environment issues."""
     import platform
     import shutil
-    
+
     checks: list[tuple[str, bool, str]] = []
-    
+
     checks.append(("Mnemosyne version", True, __version__))
-    checks.append(("Python version", True, f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"))
+    checks.append(
+        (
+            "Python version",
+            True,
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        )
+    )
     checks.append(("Platform", True, f"{platform.system()} {platform.machine()}"))
-    
+
     config_path = DEFAULT_DATA_DIR / "config.toml"
     checks.append(("Config file", config_path.exists(), str(config_path)))
-    
+
     data_dir = DEFAULT_DATA_DIR
     checks.append(("Data directory", data_dir.exists(), str(data_dir)))
-    
+
     try:
         from mnemosyne.config import load_settings
+
         settings = load_settings()
         checks.append(("Configuration", True, f"Provider: {settings.llm.provider.value}"))
     except Exception as e:
         checks.append(("Configuration", False, str(e)[:50]))
-    
+
     try:
         import chromadb
+
         checks.append(("ChromaDB", True, chromadb.__version__))
     except (ImportError, Exception) as e:
         error_msg = str(e)[:30] if str(e) else "Import failed"
         checks.append(("ChromaDB", False, error_msg))
-    
+
     try:
         import anthropic
+
         checks.append(("Anthropic SDK", True, anthropic.__version__))
     except ImportError:
         checks.append(("Anthropic SDK", False, "Not installed"))
-    
+
     try:
         import openai
+
         checks.append(("OpenAI SDK", True, openai.__version__))
     except ImportError:
         checks.append(("OpenAI SDK", False, "Not installed"))
-    
+
     try:
         import fastapi
+
         checks.append(("FastAPI (web)", True, fastapi.__version__))
     except ImportError:
         checks.append(("FastAPI (web)", False, "Not installed (optional)"))
-    
+
     try:
         import textual
+
         checks.append(("Textual (TUI)", True, textual.__version__))
     except ImportError:
         checks.append(("Textual (TUI)", False, "Not installed (optional)"))
-    
+
     try:
         import pynput
+
         checks.append(("pynput (capture)", True, "Available"))
     except ImportError:
         checks.append(("pynput (capture)", False, "Not installed"))
-    
+
     if platform.system() == "Darwin":
         try:
             import Quartz
+
             checks.append(("macOS Quartz", True, "Available"))
         except ImportError:
             checks.append(("macOS Quartz", False, "Not installed (optional)"))
-    
-    console.print(Panel("[bold]Mnemosyne Doctor[/bold]\nDiagnostic information for troubleshooting", title="🩺 Doctor"))
-    
+
+    console.print(
+        Panel(
+            "[bold]Mnemosyne Doctor[/bold]\nDiagnostic information for troubleshooting",
+            title="🩺 Doctor",
+        )
+    )
+
     table = Table(show_header=True, header_style="bold")
     table.add_column("Check", style="cyan")
     table.add_column("Status")
     table.add_column("Details")
-    
+
     all_passed = True
     for name, passed, details in checks:
         status_icon = "[green]✓[/green]" if passed else "[red]✗[/red]"
         if not passed and "optional" not in details.lower():
             all_passed = False
         table.add_row(name, status_icon, details)
-    
+
     console.print(table)
-    
+
     if all_passed:
         console.print("\n[green]All checks passed![/green]")
     else:
         console.print("\n[yellow]Some checks failed. Run 'mnemosyne setup' to configure.[/yellow]")
-    
+
     console.print("\n[dim]Copy this output when reporting issues.[/dim]")
 
 
@@ -652,7 +698,9 @@ def version():
 def summary(
     period: str = typer.Argument("today", help="Period: today, yesterday, week"),
     data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
-    format: str = typer.Option("text", "--format", "-f", help="Output format: text, json, html, markdown"),
+    format: str = typer.Option(
+        "text", "--format", "-f", help="Output format: text, json, html, markdown"
+    ),
     output: Path = typer.Option(None, "--output", "-o", help="Save report to file"),
 ):
     """Generate AI-powered activity summary."""
@@ -662,17 +710,19 @@ def summary(
     from mnemosyne.llm.factory import create_llm_provider
     from mnemosyne.analytics.summary import SummaryGenerator
     from mnemosyne.analytics.reports import ReportGenerator, ReportFormat
-    
+
     settings = load_settings()
     db = Database(data_dir / "mnemosyne.db")
     llm = create_llm_provider(settings.llm)
-    
+
     generator = SummaryGenerator(llm=llm, database=db)
     reporter = ReportGenerator(output_dir=data_dir / "reports")
-    
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+
+    with Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+    ) as progress:
         task = progress.add_task("Generating summary...", total=None)
-        
+
         if period == "week":
             result = asyncio.run(generator.generate_weekly_summary())
             report_name = f"weekly-{result.end_date.strftime('%Y-%m-%d')}"
@@ -682,17 +732,17 @@ def summary(
                 date = date - timedelta(days=1)
             result = asyncio.run(generator.generate_daily_summary(date))
             report_name = f"daily-{result.date.strftime('%Y-%m-%d')}"
-        
+
         progress.update(task, completed=True)
-    
+
     fmt = ReportFormat(format) if format in ["json", "html", "markdown"] else None
-    
+
     if fmt:
-        if hasattr(result, 'daily_summaries'):
+        if hasattr(result, "daily_summaries"):
             content = reporter.generate_weekly_report(result, fmt)
         else:
             content = reporter.generate_daily_report(result, fmt)
-        
+
         if output:
             with open(output, "w") as f:
                 f.write(content)
@@ -700,25 +750,31 @@ def summary(
         else:
             console.print(content)
     else:
-        if hasattr(result, 'daily_summaries'):
-            console.print(Panel(
-                f"[bold]{result.headline}[/bold]\n\n"
-                f"Period: {result.start_date.strftime('%b %d')} - {result.end_date.strftime('%b %d, %Y')}\n"
-                f"Total Hours: {result.total_hours:.1f}h\n"
-                f"Avg Productivity: {result.average_productivity:.0f}%\n\n"
-                f"[cyan]Insights:[/cyan]\n" + "\n".join(f"  • {i}" for i in result.weekly_insights[:3]),
-                title="📊 Weekly Summary",
-            ))
+        if hasattr(result, "daily_summaries"):
+            console.print(
+                Panel(
+                    f"[bold]{result.headline}[/bold]\n\n"
+                    f"Period: {result.start_date.strftime('%b %d')} - {result.end_date.strftime('%b %d, %Y')}\n"
+                    f"Total Hours: {result.total_hours:.1f}h\n"
+                    f"Avg Productivity: {result.average_productivity:.0f}%\n\n"
+                    f"[cyan]Insights:[/cyan]\n"
+                    + "\n".join(f"  • {i}" for i in result.weekly_insights[:3]),
+                    title="📊 Weekly Summary",
+                )
+            )
         else:
-            console.print(Panel(
-                f"[bold]{result.headline}[/bold]\n\n"
-                f"Date: {result.date.strftime('%A, %B %d, %Y')}\n"
-                f"Active Time: {result.total_hours:.1f}h\n"
-                f"Productivity: {result.productivity_score:.0f}%\n\n"
-                f"[cyan]Top Apps:[/cyan] {', '.join(result.top_apps[:3])}\n\n"
-                f"[cyan]Highlights:[/cyan]\n" + "\n".join(f"  • {h}" for h in result.highlights[:3]),
-                title="📊 Daily Summary",
-            ))
+            console.print(
+                Panel(
+                    f"[bold]{result.headline}[/bold]\n\n"
+                    f"Date: {result.date.strftime('%A, %B %d, %Y')}\n"
+                    f"Active Time: {result.total_hours:.1f}h\n"
+                    f"Productivity: {result.productivity_score:.0f}%\n\n"
+                    f"[cyan]Top Apps:[/cyan] {', '.join(result.top_apps[:3])}\n\n"
+                    f"[cyan]Highlights:[/cyan]\n"
+                    + "\n".join(f"  • {h}" for h in result.highlights[:3]),
+                    title="📊 Daily Summary",
+                )
+            )
 
 
 @app.command()
@@ -730,22 +786,28 @@ def stats(
     from datetime import datetime, timedelta
     from mnemosyne.store.database import Database
     from mnemosyne.analytics.statistics import StatisticsCalculator
-    
+
     db = Database(data_dir / "mnemosyne.db")
     calculator = StatisticsCalculator(db)
-    
+
     if period == "week":
         stats_list = calculator.calculate_weekly_stats()
-        
+
         table = Table(title="📊 Weekly Statistics")
         table.add_column("Day", style="cyan")
         table.add_column("Hours")
         table.add_column("Productivity")
         table.add_column("Top App")
         table.add_column("Events")
-        
+
         for s in stats_list:
-            score_color = "green" if s.productivity.score >= 70 else "yellow" if s.productivity.score >= 40 else "red"
+            score_color = (
+                "green"
+                if s.productivity.score >= 70
+                else "yellow"
+                if s.productivity.score >= 40
+                else "red"
+            )
             table.add_row(
                 s.date.strftime("%a %m/%d"),
                 f"{s.total_active_hours:.1f}h",
@@ -753,45 +815,57 @@ def stats(
                 s.top_apps[0] if s.top_apps else "-",
                 str(s.event_count),
             )
-        
+
         console.print(table)
-        
+
         total_hours = sum(s.total_active_hours for s in stats_list)
-        avg_productivity = sum(s.productivity.score for s in stats_list) / len(stats_list) if stats_list else 0
-        console.print(f"\n[bold]Total:[/bold] {total_hours:.1f}h | [bold]Avg Productivity:[/bold] {avg_productivity:.0f}%")
+        avg_productivity = (
+            sum(s.productivity.score for s in stats_list) / len(stats_list) if stats_list else 0
+        )
+        console.print(
+            f"\n[bold]Total:[/bold] {total_hours:.1f}h | [bold]Avg Productivity:[/bold] {avg_productivity:.0f}%"
+        )
     else:
         date = datetime.now()
         if period == "yesterday":
             date = date - timedelta(days=1)
-        
+
         s = calculator.calculate_daily_stats(date)
-        
-        console.print(Panel(
-            f"[bold]Date:[/bold] {s.date.strftime('%A, %B %d, %Y')}\n"
-            f"[bold]Active Time:[/bold] {s.total_active_hours:.1f} hours\n"
-            f"[bold]Events:[/bold] {s.event_count} | [bold]Screenshots:[/bold] {s.screenshot_count}\n\n"
-            f"[cyan]Productivity Score:[/cyan] {s.productivity.score:.0f}/100\n"
-            f"  Productive: {s.productivity.productive_seconds/3600:.1f}h\n"
-            f"  Neutral: {s.productivity.neutral_seconds/3600:.1f}h\n"
-            f"  Distracting: {s.productivity.distracting_seconds/3600:.1f}h\n\n"
-            f"[cyan]Peak Hours:[/cyan] {', '.join(f'{h}:00' for h in s.peak_hours) if s.peak_hours else 'N/A'}",
-            title="📊 Daily Statistics",
-        ))
-        
+
+        console.print(
+            Panel(
+                f"[bold]Date:[/bold] {s.date.strftime('%A, %B %d, %Y')}\n"
+                f"[bold]Active Time:[/bold] {s.total_active_hours:.1f} hours\n"
+                f"[bold]Events:[/bold] {s.event_count} | [bold]Screenshots:[/bold] {s.screenshot_count}\n\n"
+                f"[cyan]Productivity Score:[/cyan] {s.productivity.score:.0f}/100\n"
+                f"  Productive: {s.productivity.productive_seconds / 3600:.1f}h\n"
+                f"  Neutral: {s.productivity.neutral_seconds / 3600:.1f}h\n"
+                f"  Distracting: {s.productivity.distracting_seconds / 3600:.1f}h\n\n"
+                f"[cyan]Peak Hours:[/cyan] {', '.join(f'{h}:00' for h in s.peak_hours) if s.peak_hours else 'N/A'}",
+                title="📊 Daily Statistics",
+            )
+        )
+
         if s.app_usage:
             table = Table(title="App Usage")
             table.add_column("App", style="cyan")
             table.add_column("Time")
             table.add_column("Category")
-            
+
             for app in sorted(s.app_usage, key=lambda x: x.total_seconds, reverse=True)[:10]:
-                cat_color = "green" if app.category == "productive" else "red" if app.category == "distracting" else "white"
+                cat_color = (
+                    "green"
+                    if app.category == "productive"
+                    else "red"
+                    if app.category == "distracting"
+                    else "white"
+                )
                 table.add_row(
                     app.app_name[:30],
                     f"{app.total_minutes:.0f} min",
                     f"[{cat_color}]{app.category}[/{cat_color}]",
                 )
-            
+
             console.print(table)
 
 
@@ -806,59 +880,62 @@ def replay(
     """Replay a recorded session."""
     from mnemosyne.store.database import Database
     from mnemosyne.replay import ActionReplayer, ReplayConfig, ReplaySpeed
-    
+
     db = Database(data_dir / "mnemosyne.db")
-    
+
     session = db.get_session(session_id)
     if not session:
         for s in db.list_sessions():
             if s.id.startswith(session_id):
                 session = s
                 break
-    
+
     if not session:
         console.print(f"[red]Session not found: {session_id}[/red]")
         raise typer.Exit(1)
-    
+
     speed_map = {
         "slow": ReplaySpeed.SLOW,
         "normal": ReplaySpeed.NORMAL,
         "fast": ReplaySpeed.FAST,
         "instant": ReplaySpeed.INSTANT,
     }
-    
+
     config = ReplayConfig(
         speed=speed_map.get(speed, ReplaySpeed.NORMAL),
         require_confirmation=not no_confirm,
     )
-    
+
     replayer = ActionReplayer(
         database=db,
         config=config,
-        on_action=lambda e, i, t: console.print(f"  [{i+1}/{t}] {e.action_type}"),
+        on_action=lambda e, i, t: console.print(f"  [{i + 1}/{t}] {e.action_type}"),
         on_complete=lambda s: console.print(f"\n[green]Replay completed![/green]"),
     )
-    
+
     info = replayer.get_session_preview(session.id)
-    
-    console.print(Panel(
-        f"[bold]Session:[/bold] {session.name or session.id[:8]}\n"
-        f"[bold]Total Events:[/bold] {info['total_events']}\n"
-        f"[bold]Replayable:[/bold] {info['replayable_events']}\n"
-        f"[bold]Original Duration:[/bold] {info['original_duration_seconds']:.1f}s\n"
-        f"[bold]Estimated Replay:[/bold] {info['estimated_replay_seconds']:.1f}s\n\n"
-        f"[cyan]Actions:[/cyan]\n" + "\n".join(f"  • {k}: {v}" for k, v in info['action_breakdown'].items()),
-        title="🎬 Replay Preview",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold]Session:[/bold] {session.name or session.id[:8]}\n"
+            f"[bold]Total Events:[/bold] {info['total_events']}\n"
+            f"[bold]Replayable:[/bold] {info['replayable_events']}\n"
+            f"[bold]Original Duration:[/bold] {info['original_duration_seconds']:.1f}s\n"
+            f"[bold]Estimated Replay:[/bold] {info['estimated_replay_seconds']:.1f}s\n\n"
+            f"[cyan]Actions:[/cyan]\n"
+            + "\n".join(f"  • {k}: {v}" for k, v in info["action_breakdown"].items()),
+            title="🎬 Replay Preview",
+        )
+    )
+
     if preview:
         return
-    
+
     if not no_confirm:
         confirm = typer.confirm("Start replay?")
         if not confirm:
             return
-    
+
     console.print("\n[yellow]Starting replay...[/yellow]\n")
     asyncio.run(replayer.replay_session(session.id))
 
@@ -872,33 +949,44 @@ def search(
 ):
     """Search text in screenshots using OCR."""
     from mnemosyne.ocr import ScreenshotIndexer
-    
+
     indexer = ScreenshotIndexer(data_dir=data_dir)
-    
+
     if index:
-        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+        ) as progress:
             task = progress.add_task("Indexing screenshots...", total=None)
             count = indexer.index_all()
             progress.update(task, completed=True)
         console.print(f"[green]Indexed {count} screenshots[/green]\n")
-    
+
     results = indexer.search(query, limit=limit)
-    
+
     if not results:
         console.print(f"[yellow]No results found for '{query}'[/yellow]")
         console.print("[dim]Tip: Run with --index to index new screenshots[/dim]")
         return
-    
+
     console.print(f"[green]Found {len(results)} results for '{query}':[/green]\n")
-    
+
     for i, r in enumerate(results, 1):
         from datetime import datetime
-        time_str = datetime.fromtimestamp(r.timestamp).strftime("%Y-%m-%d %H:%M") if r.timestamp else "Unknown"
+
+        time_str = (
+            datetime.fromtimestamp(r.timestamp).strftime("%Y-%m-%d %H:%M")
+            if r.timestamp
+            else "Unknown"
+        )
         snippet = r.text[:100].replace("\n", " ")
         if query.lower() in snippet.lower():
             idx = snippet.lower().index(query.lower())
-            snippet = snippet[:idx] + f"[bold yellow]{snippet[idx:idx+len(query)]}[/bold yellow]" + snippet[idx+len(query):]
-        
+            snippet = (
+                snippet[:idx]
+                + f"[bold yellow]{snippet[idx : idx + len(query)]}[/bold yellow]"
+                + snippet[idx + len(query) :]
+            )
+
         console.print(f"  {i}. [cyan]{time_str}[/cyan]")
         console.print(f"     {snippet}...")
         console.print(f"     [dim]{r.source_path}[/dim]\n")
@@ -908,30 +996,40 @@ def search(
 def aggregate(
     session_id: str = typer.Argument(..., help="Session ID to aggregate"),
     data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
-    mouse_window: float = typer.Option(500.0, "--mouse-window", help="Mouse aggregation window (ms)"),
-    scroll_window: float = typer.Option(1000.0, "--scroll-window", help="Scroll aggregation window (ms)"),
-    typing_window: float = typer.Option(2000.0, "--typing-window", help="Typing aggregation window (ms)"),
-    idle_threshold: float = typer.Option(3.0, "--idle-threshold", help="Idle detection threshold (seconds)"),
-    epsilon: float = typer.Option(5.0, "--epsilon", help="Douglas-Peucker epsilon for path simplification"),
+    mouse_window: float = typer.Option(
+        500.0, "--mouse-window", help="Mouse aggregation window (ms)"
+    ),
+    scroll_window: float = typer.Option(
+        1000.0, "--scroll-window", help="Scroll aggregation window (ms)"
+    ),
+    typing_window: float = typer.Option(
+        2000.0, "--typing-window", help="Typing aggregation window (ms)"
+    ),
+    idle_threshold: float = typer.Option(
+        3.0, "--idle-threshold", help="Idle detection threshold (seconds)"
+    ),
+    epsilon: float = typer.Option(
+        5.0, "--epsilon", help="Douglas-Peucker epsilon for path simplification"
+    ),
     output: Path = typer.Option(None, "--output", "-o", help="Save result to JSON file"),
 ):
     """Aggregate events in a session to reduce noise."""
     from mnemosyne.store.database import Database
     from mnemosyne.aggregation import EventAggregator, AggregationConfig
-    
+
     db = Database(data_dir / "mnemosyne.db")
-    
+
     session = db.get_session(session_id)
     if not session:
         for s in db.list_sessions():
             if s.id.startswith(session_id):
                 session = s
                 break
-    
+
     if not session:
         console.print(f"[red]Session not found: {session_id}[/red]")
         raise typer.Exit(1)
-    
+
     config = AggregationConfig(
         mouse_window_ms=mouse_window,
         scroll_window_ms=scroll_window,
@@ -939,43 +1037,50 @@ def aggregate(
         idle_threshold_seconds=idle_threshold,
         douglas_peucker_epsilon=epsilon,
     )
-    
+
     aggregator = EventAggregator(config=config)
     events = db.get_events(session.id)
-    
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+
+    with Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+    ) as progress:
         task = progress.add_task("Aggregating events...", total=None)
         result = asyncio.run(aggregator.aggregate_session(events))
         progress.update(task, completed=True)
-    
-    console.print(Panel(
-        f"[bold]Session:[/bold] {session.name or session.id[:8]}\n"
-        f"[bold]Original Events:[/bold] {result.original_event_count}\n"
-        f"[bold]Aggregated Events:[/bold] {result.aggregated_event_count}\n"
-        f"[bold]Compression:[/bold] {result.compression_ratio:.1%}\n"
-        f"[bold]Processing Time:[/bold] {result.processing_time_ms:.1f}ms\n\n"
-        f"[cyan]Breakdown:[/cyan]\n"
-        f"  Mouse trajectories: {len(result.mouse_trajectories)}\n"
-        f"  Scroll sequences: {len(result.scroll_sequences)}\n"
-        f"  Typing sequences: {len(result.typing_sequences)}\n"
-        f"  Idle periods: {len(result.idle_periods)}",
-        title="📊 Aggregation Result",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold]Session:[/bold] {session.name or session.id[:8]}\n"
+            f"[bold]Original Events:[/bold] {result.original_event_count}\n"
+            f"[bold]Aggregated Events:[/bold] {result.aggregated_event_count}\n"
+            f"[bold]Compression:[/bold] {result.compression_ratio:.1%}\n"
+            f"[bold]Processing Time:[/bold] {result.processing_time_ms:.1f}ms\n\n"
+            f"[cyan]Breakdown:[/cyan]\n"
+            f"  Mouse trajectories: {len(result.mouse_trajectories)}\n"
+            f"  Scroll sequences: {len(result.scroll_sequences)}\n"
+            f"  Typing sequences: {len(result.typing_sequences)}\n"
+            f"  Idle periods: {len(result.idle_periods)}",
+            title="📊 Aggregation Result",
+        )
+    )
+
     if result.typing_sequences:
         console.print("\n[cyan]Typing Samples:[/cyan]")
         for i, ts in enumerate(result.typing_sequences[:3], 1):
             text_preview = ts.text[:50].replace("\n", "↵") + ("..." if len(ts.text) > 50 else "")
-            console.print(f"  {i}. \"{text_preview}\" ({ts.wpm:.0f} WPM, {ts.char_count} chars)")
-    
+            console.print(f'  {i}. "{text_preview}" ({ts.wpm:.0f} WPM, {ts.char_count} chars)')
+
     if result.idle_periods:
         away_periods = [p for p in result.idle_periods if p.is_away]
         breaks = [p for p in result.idle_periods if p.is_break]
         pauses = [p for p in result.idle_periods if p.is_short_pause]
-        console.print(f"\n[cyan]Idle Analysis:[/cyan] {len(pauses)} pauses, {len(breaks)} breaks, {len(away_periods)} away periods")
-    
+        console.print(
+            f"\n[cyan]Idle Analysis:[/cyan] {len(pauses)} pauses, {len(breaks)} breaks, {len(away_periods)} away periods"
+        )
+
     if output:
         import json
+
         with open(output, "w") as f:
             json.dump(result.to_dict(), f, indent=2)
         console.print(f"\n[green]Result saved to {output}[/green]")
@@ -992,7 +1097,7 @@ def privacy_status(
     """Show current privacy scrubbing settings."""
     from mnemosyne.config import load_settings
     from mnemosyne.privacy import PrivacyScrubber, PrivacyConfig, ScrubLevel
-    
+
     try:
         settings = load_settings()
         privacy_config = getattr(settings, "privacy", None)
@@ -1000,25 +1105,27 @@ def privacy_status(
             privacy_config = PrivacyConfig()
     except Exception:
         privacy_config = PrivacyConfig()
-    
+
     scrubber = PrivacyScrubber(config=privacy_config)
     stats = scrubber.get_statistics()
-    
+
     status_color = "green" if stats["enabled"] else "red"
     status_text = "Enabled" if stats["enabled"] else "Disabled"
-    
-    console.print(Panel(
-        f"[bold]Status:[/bold] [{status_color}]{status_text}[/{status_color}]\n"
-        f"[bold]Level:[/bold] {stats['level']}\n"
-        f"[bold]Pattern Count:[/bold] {stats['pattern_count']}\n\n"
-        f"[cyan]Scrubbing Targets:[/cyan]\n"
-        f"  Text: {'✓' if stats['scrub_text'] else '✗'}\n"
-        f"  Images: {'✓' if stats['scrub_images'] else '✗'}\n"
-        f"  Events: {'✓' if stats['scrub_events'] else '✗'}\n\n"
-        f"[cyan]Allow List:[/cyan] {stats['allow_list_count']} entries\n"
-        f"[cyan]Disabled Types:[/cyan] {', '.join(stats['disabled_types']) or 'None'}",
-        title="🔒 Privacy Scrubbing Status",
-    ))
+
+    console.print(
+        Panel(
+            f"[bold]Status:[/bold] [{status_color}]{status_text}[/{status_color}]\n"
+            f"[bold]Level:[/bold] {stats['level']}\n"
+            f"[bold]Pattern Count:[/bold] {stats['pattern_count']}\n\n"
+            f"[cyan]Scrubbing Targets:[/cyan]\n"
+            f"  Text: {'✓' if stats['scrub_text'] else '✗'}\n"
+            f"  Images: {'✓' if stats['scrub_images'] else '✗'}\n"
+            f"  Events: {'✓' if stats['scrub_events'] else '✗'}\n\n"
+            f"[cyan]Allow List:[/cyan] {stats['allow_list_count']} entries\n"
+            f"[cyan]Disabled Types:[/cyan] {', '.join(stats['disabled_types']) or 'None'}",
+            title="🔒 Privacy Scrubbing Status",
+        )
+    )
 
 
 @privacy_app.command("enable")
@@ -1028,33 +1135,34 @@ def privacy_enable(
     """Enable privacy scrubbing."""
     from mnemosyne.config import load_settings, save_settings
     from mnemosyne.privacy import PrivacyConfig
-    
+
     config_path = data_dir / "config.toml"
-    
+
     try:
         settings = load_settings(config_path)
     except Exception:
         from mnemosyne.config.settings import Settings
+
         settings = Settings()
-    
+
     if not hasattr(settings, "privacy"):
         import toml
-        
+
         if config_path.exists():
             with open(config_path) as f:
                 data = toml.load(f)
         else:
             data = {}
-        
+
         data["privacy"] = {"enabled": True}
-        
+
         config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(config_path, "w") as f:
             toml.dump(data, f)
     else:
         settings.privacy.enabled = True
         save_settings(settings, config_path)
-    
+
     console.print("[green]✓ Privacy scrubbing enabled[/green]")
 
 
@@ -1064,24 +1172,24 @@ def privacy_disable(
 ):
     """Disable privacy scrubbing."""
     import toml
-    
+
     config_path = data_dir / "config.toml"
-    
+
     if config_path.exists():
         with open(config_path) as f:
             data = toml.load(f)
     else:
         data = {}
-    
+
     if "privacy" not in data:
         data["privacy"] = {}
-    
+
     data["privacy"]["enabled"] = False
-    
+
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         toml.dump(data, f)
-    
+
     console.print("[yellow]✗ Privacy scrubbing disabled[/yellow]")
     console.print("[dim]Warning: PII will not be masked in recordings[/dim]")
 
@@ -1094,36 +1202,36 @@ def privacy_level(
     """Set the privacy scrubbing level."""
     import toml
     from mnemosyne.privacy import ScrubLevel
-    
+
     valid_levels = [l.value for l in ScrubLevel]
     if level not in valid_levels:
         console.print(f"[red]Invalid level: {level}[/red]")
         console.print(f"Valid levels: {', '.join(valid_levels)}")
         raise typer.Exit(1)
-    
+
     config_path = data_dir / "config.toml"
-    
+
     if config_path.exists():
         with open(config_path) as f:
             data = toml.load(f)
     else:
         data = {}
-    
+
     if "privacy" not in data:
         data["privacy"] = {"enabled": True}
-    
+
     data["privacy"]["level"] = level
-    
+
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         toml.dump(data, f)
-    
+
     level_descriptions = {
         "minimal": "Only high-risk PII (SSN, credit cards, API keys, passwords)",
         "standard": "Common PII types with high confidence",
         "aggressive": "All detectable PII including addresses and dates",
     }
-    
+
     console.print(f"[green]✓ Privacy level set to: {level}[/green]")
     console.print(f"[dim]{level_descriptions[level]}[/dim]")
 
@@ -1135,17 +1243,18 @@ def privacy_test(
     """Test PII detection on sample text."""
     import asyncio
     from mnemosyne.privacy import PrivacyScrubber, PrivacyConfig, ScrubLevel
-    
+
     scrubber = PrivacyScrubber(config=PrivacyConfig(level=ScrubLevel.AGGRESSIVE))
-    
+
     scrubbed, result = asyncio.run(scrubber.scrub_text(text))
-    
-    console.print(Panel(
-        f"[bold]Original:[/bold]\n{text}\n\n"
-        f"[bold]Scrubbed:[/bold]\n{scrubbed}",
-        title="🔍 PII Detection Test",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold]Original:[/bold]\n{text}\n\n[bold]Scrubbed:[/bold]\n{scrubbed}",
+            title="🔍 PII Detection Test",
+        )
+    )
+
     if result.pii_found:
         console.print(f"\n[cyan]PII Found ({result.pii_count}):[/cyan]")
         for pii_type, value in result.pii_found:
@@ -1164,43 +1273,45 @@ def privacy_scrub_file(
     """Scrub PII from a file."""
     import asyncio
     from mnemosyne.privacy import PrivacyScrubber, PrivacyConfig, ScrubLevel
-    
+
     if not file_path.exists():
         console.print(f"[red]File not found: {file_path}[/red]")
         raise typer.Exit(1)
-    
+
     try:
         scrub_level = ScrubLevel(level)
     except ValueError:
         console.print(f"[red]Invalid level: {level}[/red]")
         raise typer.Exit(1)
-    
+
     scrubber = PrivacyScrubber(config=PrivacyConfig(level=scrub_level))
-    
+
     image_extensions = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
-    
+
     if file_path.suffix.lower() in image_extensions:
-        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+        ) as progress:
             task = progress.add_task("Scrubbing image...", total=None)
             result = asyncio.run(scrubber.scrub_image(file_path))
             progress.update(task, completed=True)
-        
+
         console.print(f"[green]✓ Image scrubbed[/green]")
         console.print(f"  Regions blurred: {result.regions_blurred}")
         console.print(f"  Output: {result.scrubbed_path}")
-        
+
         if result.pii_types_found:
             console.print(f"  PII types: {', '.join(t.value for t in result.pii_types_found)}")
     else:
         with open(file_path) as f:
             text = f.read()
-        
+
         scrubbed, result = asyncio.run(scrubber.scrub_text(text))
-        
+
         output_path = output or file_path.with_suffix(f".scrubbed{file_path.suffix}")
         with open(output_path, "w") as f:
             f.write(scrubbed)
-        
+
         console.print(f"[green]✓ Text file scrubbed[/green]")
         console.print(f"  PII instances found: {result.pii_count}")
         console.print(f"  Output: {output_path}")
@@ -1218,19 +1329,21 @@ def ground(
     import asyncio
     import json
     from mnemosyne.grounding import VisualGrounder, AnnotationStyle
-    
+
     if not image_path.exists():
         console.print(f"[red]Image not found: {image_path}[/red]")
         raise typer.Exit(1)
-    
+
     style = AnnotationStyle(show_bounds=show_bounds)
     grounder = VisualGrounder(annotation_style=style)
-    
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+
+    with Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+    ) as progress:
         task = progress.add_task("Detecting UI elements...", total=None)
         result = asyncio.run(grounder.ground_image(image_path, output))
         progress.update(task, completed=True)
-    
+
     if json_output:
         elements_data = [
             {
@@ -1248,24 +1361,26 @@ def ground(
         ]
         console.print(json.dumps(elements_data, indent=2))
         return
-    
+
     if prompt:
         som_prompt = asyncio.run(grounder.generate_som_prompt(image_path, result.elements))
         console.print(Panel(som_prompt, title="Set-of-Mark Prompt"))
         return
-    
+
     interactive = [e for e in result.elements if e.is_interactive]
     non_interactive = [e for e in result.elements if not e.is_interactive]
-    
-    console.print(Panel(
-        f"[bold]Source:[/bold] {result.source_path}\n"
-        f"[bold]Size:[/bold] {result.image_width}x{result.image_height}\n"
-        f"[bold]Elements:[/bold] {result.element_count} ({len(interactive)} interactive)\n"
-        f"[bold]Processing:[/bold] {result.processing_time_ms:.1f}ms\n"
-        f"[bold]Output:[/bold] {result.annotated_path}",
-        title="🎯 Visual Grounding Result",
-    ))
-    
+
+    console.print(
+        Panel(
+            f"[bold]Source:[/bold] {result.source_path}\n"
+            f"[bold]Size:[/bold] {result.image_width}x{result.image_height}\n"
+            f"[bold]Elements:[/bold] {result.element_count} ({len(interactive)} interactive)\n"
+            f"[bold]Processing:[/bold] {result.processing_time_ms:.1f}ms\n"
+            f"[bold]Output:[/bold] {result.annotated_path}",
+            title="🎯 Visual Grounding Result",
+        )
+    )
+
     if interactive:
         table = Table(title="Interactive Elements")
         table.add_column("ID", style="cyan")
@@ -1273,10 +1388,12 @@ def ground(
         table.add_column("Position")
         table.add_column("Size")
         table.add_column("Confidence")
-        
+
         for e in interactive:
             cx, cy = e.center
-            conf_color = "green" if e.confidence >= 0.7 else "yellow" if e.confidence >= 0.5 else "red"
+            conf_color = (
+                "green" if e.confidence >= 0.7 else "yellow" if e.confidence >= 0.5 else "red"
+            )
             table.add_row(
                 str(e.id),
                 e.element_type.value,
@@ -1284,10 +1401,400 @@ def ground(
                 f"{e.bounds.width}x{e.bounds.height}",
                 f"[{conf_color}]{e.confidence:.0%}[/{conf_color}]",
             )
-        
+
         console.print(table)
-    
+
     console.print(f"\n[dim]Annotated image saved to: {result.annotated_path}[/dim]")
+
+
+twin_app = typer.Typer(help="Digital Twin learning and replication commands")
+app.add_typer(twin_app, name="twin")
+
+
+@twin_app.command("start")
+def twin_start(
+    session_name: str = typer.Option("twin_session", "--name", "-n", help="Session name"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    no_questions: bool = typer.Option(
+        False, "--no-questions", help="Disable active learning questions"
+    ),
+):
+    """Start the continuous learning digital twin system."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.pipeline.continuous import ContinuousLearner, ContinuousLearnerConfig
+    from mnemosyne.pipeline.orchestrator import PipelineConfig
+    from mnemosyne.twin.core import TwinConfig
+
+    settings = load_settings()
+    llm = create_llm_provider(settings.llm)
+
+    twin_config = TwinConfig(
+        data_dir=data_dir / "twin",
+        active_questioning_enabled=not no_questions,
+    )
+
+    pipeline_config = PipelineConfig(
+        data_dir=data_dir,
+        twin_config=twin_config,
+    )
+
+    config = ContinuousLearnerConfig(
+        data_dir=data_dir,
+        pipeline_config=pipeline_config,
+    )
+
+    def on_prediction(pred: dict) -> None:
+        if pred.get("confidence", 0) > 0.5:
+            console.print(
+                f"  [dim]Predicted: {pred.get('predicted_action', '?')} ({pred.get('confidence', 0):.0%})[/dim]"
+            )
+
+    def on_question(q: dict) -> None:
+        console.print(f"\n[cyan]❓ {q.get('text', '')}[/cyan]")
+        if q.get("options"):
+            for i, opt in enumerate(q["options"], 1):
+                console.print(f"   {i}. {opt}")
+
+    def on_insight(insight: str) -> None:
+        console.print(f"  [yellow]💡 {insight}[/yellow]")
+
+    def on_status(status: str) -> None:
+        console.print(f"  [dim]{status}[/dim]")
+
+    learner = ContinuousLearner(
+        llm=llm,
+        config=config,
+        on_prediction=on_prediction,
+        on_question=on_question,
+        on_insight=on_insight,
+        on_status=on_status,
+    )
+
+    console.print(
+        Panel(
+            f"[bold green]Digital Twin Starting[/bold green]\n\n"
+            f"Session: {session_name}\n"
+            f"Active Learning: {'Enabled' if not no_questions else 'Disabled'}\n\n"
+            "The system will learn from your actions.\n"
+            "Press [bold]Ctrl+C[/bold] to stop.",
+            title="🧠 Mnemosyne Digital Twin",
+        )
+    )
+
+    def signal_handler(sig, frame):
+        console.print("\n[yellow]Stopping twin...[/yellow]")
+        result = asyncio.run(learner.stop())
+
+        score = result.get("stats", {}).get("replication_score", 0)
+        console.print(
+            Panel(
+                f"[bold]Session Summary[/bold]\n\n"
+                f"Duration: {result.get('duration_minutes', 0):.1f} minutes\n"
+                f"Replication Score: {score:.0%}\n"
+                f"Events Processed: {result.get('stats', {}).get('pipeline', {}).get('processed_events', 0)}",
+                title="Twin Session Complete",
+            )
+        )
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    asyncio.run(learner.start(session_name))
+
+    try:
+        while True:
+            signal.pause()
+    except AttributeError:
+        import time as t
+
+        while True:
+            t.sleep(1)
+
+
+@twin_app.command("learn")
+def twin_learn(
+    session_id: str = typer.Argument(..., help="Session ID to learn from"),
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    no_questions: bool = typer.Option(
+        False, "--no-questions", help="Don't generate learning questions"
+    ),
+):
+    """Process a recorded session through the digital twin learning pipeline."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.store.database import Database
+    from mnemosyne.memory.persistent import PersistentMemory
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.twin.core import DigitalTwin, TwinConfig
+
+    settings = load_settings()
+    db = Database(data_dir / "mnemosyne.db")
+
+    session = db.get_session(session_id)
+    if not session:
+        for s in db.list_sessions():
+            if s.id.startswith(session_id):
+                session = s
+                break
+
+    if not session:
+        console.print(f"[red]Session not found: {session_id}[/red]")
+        raise typer.Exit(1)
+
+    llm = create_llm_provider(settings.llm)
+    memory = PersistentMemory(data_dir=data_dir / "memory", llm=llm)
+
+    twin_config = TwinConfig(
+        data_dir=data_dir / "twin",
+        active_questioning_enabled=not no_questions,
+    )
+
+    twin = DigitalTwin(
+        database=db,
+        memory=memory,
+        llm=llm,
+        config=twin_config,
+    )
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Initializing twin...", total=None)
+        asyncio.run(twin.initialize())
+
+        progress.update(task, description="Processing session...")
+        result = asyncio.run(
+            twin.process_session(
+                session_id=session.id,
+                generate_questions=not no_questions,
+            )
+        )
+
+        progress.update(task, completed=True)
+
+    score = twin.get_replication_score()
+
+    console.print(
+        Panel(
+            f"[bold]Session:[/bold] {session.name or session.id[:8]}\n"
+            f"[bold]Events Processed:[/bold] {result.get('events_processed', 0)}\n"
+            f"[bold]Patterns Learned:[/bold] {result.get('patterns_learned', 0)}\n"
+            f"[bold]Questions Generated:[/bold] {result.get('questions_generated', 0)}\n"
+            f"[bold]Profile Completeness:[/bold] {result.get('profile_completeness', 0):.0%}\n\n"
+            f"[cyan]Replication Score:[/cyan] {score:.0%}",
+            title="🧠 Learning Complete",
+        )
+    )
+
+
+@twin_app.command("status")
+def twin_status(
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Show digital twin status and replication metrics."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.store.database import Database
+    from mnemosyne.memory.persistent import PersistentMemory
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.twin.core import DigitalTwin, TwinConfig
+
+    settings = load_settings()
+    db = Database(data_dir / "mnemosyne.db")
+    llm = create_llm_provider(settings.llm)
+    memory = PersistentMemory(data_dir=data_dir / "memory", llm=llm)
+
+    twin = DigitalTwin(
+        database=db,
+        memory=memory,
+        llm=llm,
+        config=TwinConfig(data_dir=data_dir / "twin"),
+    )
+
+    asyncio.run(twin.initialize())
+    status = twin.get_status()
+
+    metrics = status.get("metrics", {})
+    predictor = status.get("predictor_stats", {})
+    learning = status.get("learning_stats", {})
+
+    score = status.get("replication_score", 0)
+    score_color = "green" if score >= 0.7 else "yellow" if score >= 0.4 else "red"
+
+    console.print(
+        Panel(
+            f"[bold]Replication Score:[/bold] [{score_color}]{score:.0%}[/{score_color}]\n\n"
+            f"[cyan]Metrics:[/cyan]\n"
+            f"  Action Prediction: {metrics.get('action_prediction_accuracy', 0):.0%}\n"
+            f"  Intent Prediction: {metrics.get('intent_prediction_accuracy', 0):.0%}\n"
+            f"  Pattern Recognition: {metrics.get('pattern_recognition_rate', 0):.0%}\n"
+            f"  Profile Completeness: {metrics.get('profile_completeness', 0):.0%}\n\n"
+            f"[cyan]Learning Stats:[/cyan]\n"
+            f"  Patterns Learned: {predictor.get('sequence_patterns', 0)}\n"
+            f"  Questions Asked: {learning.get('total_questions', 0)}\n"
+            f"  Questions Answered: {learning.get('answered_questions', 0)}\n"
+            f"  Intents Learned: {learning.get('learned_intents', 0)}",
+            title="🧠 Digital Twin Status",
+        )
+    )
+
+    suggestions = twin.get_improvement_suggestions()
+    if suggestions:
+        console.print("\n[cyan]Improvement Suggestions:[/cyan]")
+        for s in suggestions:
+            console.print(f"  • {s}")
+
+
+@twin_app.command("questions")
+def twin_questions(
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+    limit: int = typer.Option(10, "--limit", "-l", help="Number of questions to show"),
+    answer: bool = typer.Option(False, "--answer", "-a", help="Interactive answer mode"),
+):
+    """Show or answer pending learning questions."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.store.database import Database
+    from mnemosyne.memory.persistent import PersistentMemory
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.twin.core import DigitalTwin, TwinConfig
+
+    settings = load_settings()
+    db = Database(data_dir / "mnemosyne.db")
+    llm = create_llm_provider(settings.llm)
+    memory = PersistentMemory(data_dir=data_dir / "memory", llm=llm)
+
+    twin = DigitalTwin(
+        database=db,
+        memory=memory,
+        llm=llm,
+        config=TwinConfig(data_dir=data_dir / "twin"),
+    )
+
+    asyncio.run(twin.initialize())
+
+    questions = twin.active_learner.get_unanswered_questions(limit=limit)
+
+    if not questions:
+        console.print("[yellow]No pending questions.[/yellow]")
+        return
+
+    if answer:
+        for q in questions:
+            console.print(
+                Panel(
+                    f"[bold]{q.question_text}[/bold]\n\n"
+                    f"Type: {q.question_type.value} | Priority: {q.priority.value}",
+                    title=f"Question {q.id[:8]}",
+                )
+            )
+
+            if q.options:
+                console.print("Options:")
+                for i, opt in enumerate(q.options, 1):
+                    console.print(f"  {i}. {opt}")
+                console.print(f"  {len(q.options) + 1}. [Type custom answer]")
+
+                choice = typer.prompt("Your choice (number or text)")
+
+                try:
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(q.options):
+                        user_answer = q.options[idx]
+                    else:
+                        user_answer = typer.prompt("Enter your answer")
+                except ValueError:
+                    user_answer = choice
+            else:
+                user_answer = typer.prompt("Your answer")
+
+            asyncio.run(twin.answer_question(q.id, user_answer))
+            console.print(f"[green]✓ Answer recorded[/green]\n")
+    else:
+        table = Table(title="Pending Learning Questions")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type")
+        table.add_column("Priority")
+        table.add_column("Question")
+
+        for q in questions:
+            priority_color = (
+                "red"
+                if q.priority.value == "critical"
+                else "yellow"
+                if q.priority.value == "high"
+                else "white"
+            )
+            table.add_row(
+                q.id[:8],
+                q.question_type.value,
+                f"[{priority_color}]{q.priority.value}[/{priority_color}]",
+                q.question_text[:50] + "..." if len(q.question_text) > 50 else q.question_text,
+            )
+
+        console.print(table)
+        console.print(f"\n[dim]Run with --answer to answer questions interactively[/dim]")
+
+
+@twin_app.command("predict")
+def twin_predict(
+    data_dir: Path = typer.Option(DEFAULT_DATA_DIR, "--data-dir", "-d"),
+):
+    """Show predictions for next likely actions based on learned patterns."""
+    from mnemosyne.config import load_settings
+    from mnemosyne.store.database import Database
+    from mnemosyne.memory.persistent import PersistentMemory
+    from mnemosyne.llm.factory import create_llm_provider
+    from mnemosyne.twin.core import DigitalTwin, TwinConfig
+
+    settings = load_settings()
+    db = Database(data_dir / "mnemosyne.db")
+    llm = create_llm_provider(settings.llm)
+    memory = PersistentMemory(data_dir=data_dir / "memory", llm=llm)
+
+    twin = DigitalTwin(
+        database=db,
+        memory=memory,
+        llm=llm,
+        config=TwinConfig(data_dir=data_dir / "twin"),
+    )
+
+    asyncio.run(twin.initialize())
+
+    sessions = db.list_sessions(limit=1)
+    if not sessions:
+        console.print("[yellow]No sessions found. Record some activity first.[/yellow]")
+        return
+
+    events = list(db.iter_events(sessions[0].id))[-20:]
+
+    for event in events:
+        event_dict = {
+            "id": event.id,
+            "action_type": event.action_type,
+            "window_app": event.window_app,
+            "window_title": event.window_title,
+            "timestamp": event.timestamp,
+            "data": event.data,
+        }
+        asyncio.run(twin.observe_event(event_dict))
+
+    prediction = asyncio.run(twin.predict_next({}))
+
+    console.print(
+        Panel(
+            f"[bold]Predicted Action:[/bold] {prediction.predicted_action}\n"
+            f"[bold]Confidence:[/bold] {prediction.confidence:.0%}\n"
+            f"[bold]Method:[/bold] {prediction.prediction_method}\n"
+            f"[bold]Reasoning:[/bold] {prediction.reasoning or 'N/A'}\n\n"
+            f"[cyan]Alternatives:[/cyan]\n"
+            + "\n".join(f"  • {a}: {c:.0%}" for a, c in prediction.alternatives[:3])
+            if prediction.alternatives
+            else "  None",
+            title="🔮 Next Action Prediction",
+        )
+    )
 
 
 if __name__ == "__main__":
