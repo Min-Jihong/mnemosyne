@@ -70,7 +70,7 @@ macos = [
 ml = [
     "torch>=2.0",
     "torchvision>=0.15",
-    "transformers>=4.30",
+    "transformers>=5.5.3",
     "timm>=0.9",          # Vision models
 ]
 dev = [
