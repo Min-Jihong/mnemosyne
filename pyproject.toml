@@ -68,7 +68,7 @@ macos = [
     "pyobjc-framework-ApplicationServices>=10.0",
 ]
 ml = [
-    "torch>=2.0",
+    "torch>=2.11.0",
     "torchvision>=0.15",
     "transformers>=4.30",
     "timm>=0.9",          # Vision models
