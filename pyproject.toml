@@ -31,7 +31,7 @@ dependencies = [
     "pynput>=1.7",        # Mouse/Keyboard capture
     
     # Database
-    "aiosqlite>=0.19",    # Async SQLite
+    "aiosqlite>=0.22.1",    # Async SQLite
     
     # Vector Store
     "chromadb>=0.4",      # Local vector DB
