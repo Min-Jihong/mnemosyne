@@ -71,7 +71,7 @@ ml = [
     "torch>=2.0",
     "torchvision>=0.15",
     "transformers>=4.30",
-    "timm>=0.9",          # Vision models
+    "timm>=1.0.26",          # Vision models
 ]
 dev = [
     "pytest>=7.0",
