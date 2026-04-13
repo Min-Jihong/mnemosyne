@@ -37,7 +37,7 @@ dependencies = [
     "chromadb>=0.4",      # Local vector DB
     
     # LLM Providers
-    "anthropic>=0.25",    # Claude
+    "anthropic>=0.94.0",    # Claude
     "openai>=1.0",        # OpenAI / OpenAI-compatible
     "google-generativeai>=0.5",  # Gemini
     "httpx>=0.27",        # For Ollama and custom APIs
