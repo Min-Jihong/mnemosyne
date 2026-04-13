@@ -34,7 +34,7 @@ dependencies = [
     "aiosqlite>=0.19",    # Async SQLite
     
     # Vector Store
-    "chromadb>=0.4",      # Local vector DB
+    "chromadb>=1.5.7",      # Local vector DB
     
     # LLM Providers
     "anthropic>=0.25",    # Claude
