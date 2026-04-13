@@ -59,7 +59,7 @@ web = [
     "uvicorn[standard]>=0.27",
     "jinja2>=3.1",
     "python-multipart>=0.0.6",
-    "websockets>=12.0",   # WebSocket support
+    "websockets>=16.0",   # WebSocket support
 ]
 macos = [
     "pyobjc-core>=10.0",         # macOS native APIs
