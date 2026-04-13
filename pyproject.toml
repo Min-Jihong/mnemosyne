@@ -52,7 +52,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tui = [
-    "textual>=0.47",      # Modern TUI framework
+    "textual>=8.2.3",      # Modern TUI framework
 ]
 web = [
     "fastapi>=0.109",
